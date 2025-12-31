@@ -9,6 +9,19 @@ import lotteryRoutes from './routes/lotteryRoutes.js';
 // Load environment variables
 dotenv.config();
 
+// Critical Process Error Listeners (Keep server responding)
+process.on('uncaughtException', (err) => {
+  console.error('🔥 CRITICAL: Uncaught Exception:', err.message);
+  console.error(err.stack);
+  // In a production app, you might want to restart via PM2
+  // but we keep it alive for now to ensure response.
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -18,7 +31,7 @@ connectDB();
 // Parse frontend URLs from environment variable
 const allowedOrigins = process.env.FRONTEND_URLS
   ? process.env.FRONTEND_URLS.split(',').map((url) => url.trim())
-  : ['http://localhost:5173', 'http://localhost:3000'];
+  : ['https://retailchampions.com', 'http://localhost:5173', 'http://localhost:3000'];
 
 // CORS configuration for multiple frontends with credentials
 app.use(
@@ -69,23 +82,20 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Global Error:', err);
+  console.error('❌ Global Error:', err);
 
-  // Handle multer errors
+  // Default response for any error
+  const statusCode = err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+
+  // Specific handling for known errors
   if (err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: 'File size exceeds 5MB limit',
-      });
-    }
     return res.status(400).json({
       success: false,
-      message: err.message,
+      message: err.code === 'LIMIT_FILE_SIZE' ? 'File size exceeds 5MB limit' : err.message,
     });
   }
 
-  // Handle CORS errors
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({
       success: false,
@@ -93,12 +103,30 @@ app.use((err, req, res, next) => {
     });
   }
 
-  res.status(500).json({
+  // Database Connection or Validation errors
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Data validation failed',
+      errors: Object.values(err.errors).map(e => e.message)
+    });
+  }
+
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid ID format: ${err.value}`
+    });
+  }
+
+  // Ensure server keeps responding with JSON for any exception
+  res.status(statusCode).json({
     success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    message: message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
+
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -61,7 +61,13 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    couponCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
+
   {
     timestamps: true,
   }

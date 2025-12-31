@@ -70,7 +70,7 @@ export const getUsersQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 10))
-    .refine((val) => val > 0 && val <= 100, 'Limit must be between 1 and 100'),
+    .refine((val) => val > 0 && val <= 10000, 'Limit must be between 1 and 10000'),
 
   search: z.string().optional().default(''),
 

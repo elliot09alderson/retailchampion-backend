@@ -6,7 +6,9 @@ import {
   getUsers,
   getUserById,
   deleteUser,
+  deleteAllUsers,
 } from '../controllers/userController.js';
+
 
 const router = express.Router();
 
@@ -29,5 +31,11 @@ router.get('/:id', protect, getUserById);
 // @desc    Delete user by ID
 // @access  Private (requires auth header)
 router.delete('/:id', protect, deleteUser);
+
+// @route   DELETE /api/users
+// @desc    Delete all users
+// @access  Private (requires auth header)
+router.delete('/', protect, deleteAllUsers);
+
 
 export default router;

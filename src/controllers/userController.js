@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
+import cloudinary, { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import {
   validateUserRegistration,
   validateGetUsersQuery,
@@ -62,16 +62,51 @@ export const registerUser = async (req, res) => {
     // Upload image to Cloudinary
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'retailchampions/users');
 
-    // Create user
-    const user = await User.create({
+    // Generate unique coupon code
+    const generateCouponCode = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = 'RC-';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    };
+
+    let couponCode = generateCouponCode();
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 5) {
+      const existingCode = await User.findOne({ couponCode });
+      if (!existingCode) {
+        isUnique = true;
+      } else {
+        couponCode = generateCouponCode();
+        attempts++;
+      }
+    }
+
+    // Build user object dynamically to avoid setting null on unique sparse fields
+    const userData = {
       name,
       phoneNumber,
-      password: password || 'Retail@123', // Use default if not provided
-      aadhaarNumber: aadhaarNumber || null,
-      panNumber: panNumber ? panNumber.toUpperCase() : null,
+      password: password || 'Retail@123',
       imageUrl: uploadResult.secure_url,
       imagePublicId: uploadResult.public_id,
-    });
+      couponCode,
+    };
+
+    if (aadhaarNumber) {
+      userData.aadhaarNumber = aadhaarNumber;
+    }
+    if (panNumber) {
+      userData.panNumber = panNumber.toUpperCase();
+    }
+
+    // Create user
+    const user = await User.create(userData);
+
+
 
     res.status(201).json({
       success: true,
@@ -83,12 +118,27 @@ export const registerUser = async (req, res) => {
         aadhaarNumber: user.aadhaarNumber,
         panNumber: user.panNumber,
         imageUrl: user.imageUrl,
+        couponCode: user.couponCode,
         createdAt: user.createdAt,
       },
+
     });
   } catch (error) {
     console.error('Register User Error:', error);
+
+    // Handle MongoDB duplicate key error (11000)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const message = `A user with this ${field} already exists.`;
+      return res.status(409).json({
+        success: false,
+        message,
+        error: error.message
+      });
+    }
+
     res.status(500).json({
+
       success: false,
       message: 'Internal server error',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
@@ -246,6 +296,39 @@ export const deleteUser = async (req, res) => {
       });
     }
 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+// @desc    Delete all users
+// @route   DELETE /api/users
+// @access  Private (requires auth header)
+export const deleteAllUsers = async (req, res) => {
+  try {
+    // Get all public IDs for Cloudinary deletion
+    const users = await User.find({ role: 'user' }).select('imagePublicId').lean();
+    const publicIds = users.map(u => u.imagePublicId).filter(id => !!id);
+
+    // Delete images in batches of 100 (Cloudinary limit per call)
+    if (publicIds.length > 0) {
+      for (let i = 0; i < publicIds.length; i += 100) {
+        const batch = publicIds.slice(i, i + 100);
+        await cloudinary.api.delete_resources(batch);
+      }
+    }
+
+    // Delete all users from database
+    await User.deleteMany({ role: 'user' });
+
+    res.status(200).json({
+      success: true,
+      message: 'All users deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete All Users Error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
