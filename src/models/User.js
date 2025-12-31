@@ -90,9 +90,6 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 // Create indexes for efficient querying with 5000+ users
 userSchema.index({ name: 'text' }); // Text index for search
-userSchema.index({ phoneNumber: 1 }); // Index for phone number queries
-userSchema.index({ aadhaarNumber: 1 }); // Index for Aadhaar number queries
-userSchema.index({ panNumber: 1 }); // Index for PAN number queries
 userSchema.index({ createdAt: -1 }); // Index for sorting by creation date
 userSchema.index({ name: 1, phoneNumber: 1 }); // Compound index for combined queries
 

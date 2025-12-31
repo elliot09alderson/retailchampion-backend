@@ -19,7 +19,15 @@ export const seedParticipantsFromUsers = async (req, res) => {
     const { lotteryId, count } = req.body;
     
     // Find or create active lottery
-    let lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
+    let lottery;
+    
+    if (lotteryId) {
+      lottery = await Lottery.findById(lotteryId);
+    }
+    
+    if (!lottery) {
+      lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
+    }
     
     if (!lottery) {
       // Create a new lottery

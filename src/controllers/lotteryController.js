@@ -196,10 +196,13 @@ export const executeSpin = async (req, res) => {
     }
 
     // Get active participants
-    const activeParticipants = await LotteryParticipant.find({
+    let activeParticipants = await LotteryParticipant.find({
       lotteryId,
       status: 'active',
     }).populate('userId', 'name');
+
+    // Filter out participants whose user record was deleted
+    activeParticipants = activeParticipants.filter(p => p.userId !== null);
 
     const totalActive = activeParticipants.length;
 
@@ -243,7 +246,7 @@ export const executeSpin = async (req, res) => {
         status: 'active',
       }).populate('userId', 'name');
       
-      if (winner) {
+      if (winner && winner.userId) {
         winnerId = winner.userId._id;
         winner.status = 'winner';
         await winner.save();
@@ -325,10 +328,13 @@ export const getLotteryStatus = async (req, res) => {
       }).populate('eliminatedUserIds', 'name');
 
       if (round) {
+        // Filter out any null users (in case they were deleted after the round)
+        const validEliminated = (round.eliminatedUserIds || []).filter(u => u !== null);
+        
         // Get 10-20 random eliminated users for display
-        const displayCount = Math.min(20, round.eliminatedUserIds.length);
+        const displayCount = Math.min(20, validEliminated.length);
         const randomEliminated = selectRandomUsers(
-          round.eliminatedUserIds.map(u => ({ name: u.name, _id: u._id })),
+          validEliminated.map(u => ({ name: u.name, _id: u._id })),
           displayCount
         );
         eliminatedUsers = randomEliminated;
