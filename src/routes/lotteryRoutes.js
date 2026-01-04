@@ -10,6 +10,7 @@ import {
   getRoundDetails,
   getLotteryHistory,
   deleteLottery,
+  deleteAllLotteries,
 } from '../controllers/lotteryController.js';
 import {
   seedParticipantsFromUsers,
@@ -33,6 +34,7 @@ router.post('/create', protect, isAdmin, createLottery);
 router.get('/:lotteryId/participants', protect, isAdmin, getParticipants);
 router.post('/:lotteryId/spin', protect, isAdmin, executeSpin);
 router.delete('/:lotteryId', protect, isAdmin, deleteLottery);
+router.delete('/history/all', protect, isAdmin, deleteAllLotteries);
 
 // Seed routes (Admin only)
 router.post('/seed/participants', protect, isAdmin, seedParticipantsFromUsers);
@@ -40,3 +42,4 @@ router.get('/history', protect, isAdmin, getLotteryHistory);
 router.get('/seed/status', protect, isAdmin, getSeedStatus);
 
 export default router;
+

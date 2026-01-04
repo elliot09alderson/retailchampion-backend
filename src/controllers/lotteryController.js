@@ -539,3 +539,40 @@ export const deleteLottery = async (req, res) => {
     });
   }
 };
+
+// Delete all completed lottery records (Admin only)
+export const deleteAllLotteries = async (req, res) => {
+  try {
+    // Get all completed lotteries
+    const completedLotteries = await Lottery.find({ status: 'completed' });
+    
+    if (completedLotteries.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No completed lottery records found',
+      });
+    }
+
+    const lotteryIds = completedLotteries.map(l => l._id);
+
+    // Delete all associated rounds and participants for completed lotteries
+    await Promise.all([
+      LotteryRound.deleteMany({ lotteryId: { $in: lotteryIds } }),
+      LotteryParticipant.deleteMany({ lotteryId: { $in: lotteryIds } }),
+      Lottery.deleteMany({ status: 'completed' })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully deleted ${completedLotteries.length} lottery records and all associated data`,
+      deletedCount: completedLotteries.length,
+    });
+  } catch (error) {
+    console.error('Delete all lotteries error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete lottery records',
+      error: error.message,
+    });
+  }
+};
