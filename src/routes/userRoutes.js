@@ -15,7 +15,7 @@ const router = express.Router();
 // @route   POST /api/users/register
 // @desc    Register a new user with image upload
 // @access  Public
-router.post('/register', upload.single('image'), registerUser);
+router.post('/register', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'selfie', maxCount: 1 }]), registerUser);
 
 // @route   GET /api/users
 // @desc    Get all users with search, filter, and pagination

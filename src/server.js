@@ -42,9 +42,17 @@ app.use(
         return callback(null, true);
       }
 
-      if (allowedOrigins.includes(origin)) {
+      // In development, allow all localhost/127.0.0.1 variants
+      if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+        return callback(null, true);
+      }
+
+      const combinedOrigins = [...new Set([...allowedOrigins])];
+
+      if (combinedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn(`🚫 CORS blocked for origin: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     },

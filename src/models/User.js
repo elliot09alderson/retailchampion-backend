@@ -50,11 +50,19 @@ const userSchema = new mongoose.Schema(
     },
     imageUrl: {
       type: String,
-      required: true,
+      required: false,
     },
     imagePublicId: {
       type: String,
-      required: true,
+      required: false,
+    },
+    selfieUrl: {
+      type: String,
+      required: false,
+    },
+    selfiePublicId: {
+      type: String,
+      required: false,
     },
     role: {
       type: String,

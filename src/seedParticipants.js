@@ -63,10 +63,11 @@ const seedLotteryParticipants = async () => {
           name: generateRandomName(),
           phoneNumber,
           password: 'test123',
-          documentType: 'pan',
-          documentNumber: `TEST${String(i).padStart(6, '0')}`,
+          aadhaarNumber: `90000${String(i).padStart(7, '0')}`,
           imageUrl: 'https://via.placeholder.com/150',
           imagePublicId: `test-user-${i}`,
+          selfieUrl: 'https://via.placeholder.com/150',
+          selfiePublicId: `test-selfie-${i}`,
         });
       }
 

@@ -26,11 +26,15 @@ export const registerUser = async (req, res) => {
 
     const { name, phoneNumber, password, aadhaarNumber, panNumber } = validation.data;
 
-    // Check if image was uploaded
-    if (!req.file) {
+    // Check if at least one file was uploaded (either image or selfie)
+    const files = req.files || {};
+    const imageFile = files['image'] ? files['image'][0] : null;
+    const selfieFile = files['selfie'] ? files['selfie'][0] : null;
+
+    if (!selfieFile) {
       return res.status(400).json({
         success: false,
-        message: 'User image is required',
+        message: 'Selfie is required',
       });
     }
 
@@ -59,8 +63,16 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Upload image to Cloudinary
-    const uploadResult = await uploadToCloudinary(req.file.buffer, 'retailchampions/users');
+    // Upload files to Cloudinary
+    let uploadResult = null;
+    if (imageFile) {
+      uploadResult = await uploadToCloudinary(imageFile.buffer, 'retailchampions/users');
+    }
+
+    let selfieUploadResult = null;
+    if (selfieFile) {
+      selfieUploadResult = await uploadToCloudinary(selfieFile.buffer, 'retailchampions/selfies');
+    }
 
     // Generate unique coupon code
     const generateCouponCode = () => {
@@ -91,10 +103,18 @@ export const registerUser = async (req, res) => {
       name,
       phoneNumber,
       password: password || 'Retail@123',
-      imageUrl: uploadResult.secure_url,
-      imagePublicId: uploadResult.public_id,
       couponCode,
     };
+
+    if (uploadResult) {
+      userData.imageUrl = uploadResult.secure_url;
+      userData.imagePublicId = uploadResult.public_id;
+    }
+
+    if (selfieUploadResult) {
+      userData.selfieUrl = selfieUploadResult.secure_url;
+      userData.selfiePublicId = selfieUploadResult.public_id;
+    }
 
     if (aadhaarNumber) {
       userData.aadhaarNumber = aadhaarNumber;
@@ -118,6 +138,7 @@ export const registerUser = async (req, res) => {
         aadhaarNumber: user.aadhaarNumber,
         panNumber: user.panNumber,
         imageUrl: user.imageUrl,
+        selfieUrl: user.selfieUrl,
         couponCode: user.couponCode,
         createdAt: user.createdAt,
       },
@@ -276,8 +297,13 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    // Delete image from Cloudinary
-    await deleteFromCloudinary(user.imagePublicId);
+    // Delete images from Cloudinary
+    if (user.imagePublicId) {
+      await deleteFromCloudinary(user.imagePublicId);
+    }
+    if (user.selfiePublicId) {
+      await deleteFromCloudinary(user.selfiePublicId);
+    }
 
     // Delete user from database
     await User.findByIdAndDelete(req.params.id);
@@ -309,8 +335,12 @@ export const deleteUser = async (req, res) => {
 export const deleteAllUsers = async (req, res) => {
   try {
     // Get all public IDs for Cloudinary deletion
-    const users = await User.find({ role: 'user' }).select('imagePublicId').lean();
-    const publicIds = users.map(u => u.imagePublicId).filter(id => !!id);
+    const users = await User.find({ role: 'user' }).select('imagePublicId selfiePublicId').lean();
+    const publicIds = users.reduce((acc, u) => {
+      if (u.imagePublicId) acc.push(u.imagePublicId);
+      if (u.selfiePublicId) acc.push(u.selfiePublicId);
+      return acc;
+    }, []);
 
     // Delete images in batches of 100 (Cloudinary limit per call)
     if (publicIds.length > 0) {
