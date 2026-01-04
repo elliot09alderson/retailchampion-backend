@@ -33,6 +33,10 @@ const lotterySchema = new mongoose.Schema(
     completedAt: {
       type: Date,
     },
+    winnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

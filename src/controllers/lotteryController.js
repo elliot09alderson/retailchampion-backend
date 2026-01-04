@@ -149,7 +149,7 @@ export const getParticipants = async (req, res) => {
     const { lotteryId } = req.params;
 
     const participants = await LotteryParticipant.find({ lotteryId })
-      .populate('userId', 'name phoneNumber')
+      .populate('userId', 'name phoneNumber selfieUrl imageUrl')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -253,11 +253,13 @@ export const executeSpin = async (req, res) => {
         winnerData = {
           name: winner.userId.name,
           participantId: winner._id,
+          selfieUrl: winner.userId.selfieUrl,
         };
       }
 
       lottery.status = 'completed';
       lottery.completedAt = new Date();
+      lottery.winnerId = winnerId;
     }
 
     // Create round record
@@ -428,7 +430,7 @@ export const getWinner = async (req, res) => {
     const winner = await LotteryParticipant.findOne({
       lotteryId,
       status: 'winner',
-    }).populate('userId', 'name phoneNumber imageUrl');
+    }).populate('userId', 'name phoneNumber selfieUrl imageUrl');
 
     if (!winner) {
       return res.status(404).json({
@@ -477,6 +479,62 @@ export const getRoundDetails = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch round details',
+      error: error.message,
+    });
+  }
+};
+
+// Get lottery history (completed lotteries)
+export const getLotteryHistory = async (req, res) => {
+  try {
+    const lotteries = await Lottery.find({ status: 'completed' })
+      .populate('winnerId', 'name phoneNumber selfieUrl')
+      .sort({ completedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: lotteries.length,
+      data: lotteries,
+    });
+  } catch (error) {
+    console.error('Get lottery history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch lottery history',
+      error: error.message,
+    });
+  }
+};
+
+// Delete lottery record (Admin only)
+export const deleteLottery = async (req, res) => {
+  try {
+    const { lotteryId } = req.params;
+
+    const lottery = await Lottery.findById(lotteryId);
+    if (!lottery) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lottery record not found',
+      });
+    }
+
+    // Delete associated rounds and participants
+    await Promise.all([
+      LotteryRound.deleteMany({ lotteryId }),
+      LotteryParticipant.deleteMany({ lotteryId }),
+      Lottery.findByIdAndDelete(lotteryId)
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Lottery record and associated data deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete lottery error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete lottery record',
       error: error.message,
     });
   }
