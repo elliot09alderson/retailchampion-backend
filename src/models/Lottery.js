@@ -37,6 +37,10 @@ const lotterySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    package: {
+      type: Number,
+      required: true,
+    },
   },
   {
     timestamps: true,

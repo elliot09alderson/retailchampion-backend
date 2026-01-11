@@ -44,12 +44,33 @@ const getEliminationCount = (roundNumber, totalActive) => {
 // Create new lottery event (Admin only)
 export const createLottery = async (req, res) => {
   try {
-    const { eventName } = req.body;
+    const { eventName, package: lotteryPackage } = req.body;
 
     if (!eventName) {
       return res.status(400).json({
         success: false,
         message: 'Event name is required',
+      });
+    }
+
+    // Check if at least one package is selected.
+    if (!lotteryPackage) {
+      return res.status(400).json({
+        success: false,
+        message: 'Package selection is required',
+      });
+    }
+
+    const finalPackage = Number(lotteryPackage);
+
+    // Verify package exists in dynamic packages
+    const Package = (await import('../models/Package.js')).default;
+    const packageExists = await Package.findOne({ amount: finalPackage });
+    
+    if (!packageExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected package is not valid or inactive',
       });
     }
 
@@ -64,6 +85,7 @@ export const createLottery = async (req, res) => {
 
     const lottery = await Lottery.create({
       eventName,
+      package: finalPackage,
       createdBy: req.user._id,
     });
 

@@ -74,6 +74,24 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    registrationId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      trim: true,
+      validate: {
+        validator: function(v) {
+          if (!v || v === '') return true;
+          return /^\d{10}$/.test(v);
+        },
+        message: 'Registration ID must be exactly 10 digits'
+      }
+    },
+    package: {
+      type: Number,
+      required: true,
+    },
   },
 
   {

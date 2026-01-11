@@ -56,6 +56,14 @@ export const userRegistrationSchema = z.object({
       }
     )
     .transform((val) => val && val.toUpperCase()),
+  registrationId: z
+    .string()
+    .regex(/^\d{10}$/, 'Registration ID must be exactly 10 digits')
+    .trim()
+    .optional()
+    .nullable(),
+  package: z
+    .preprocess((val) => Number(val), z.number({ required_error: 'Package is required' })),
 });
 
 // Query parameters validation for GET API

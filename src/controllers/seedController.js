@@ -18,7 +18,6 @@ export const seedParticipantsFromUsers = async (req, res) => {
   try {
     const { lotteryId, count } = req.body;
     
-    // Find or create active lottery
     let lottery;
     
     if (lotteryId) {
@@ -30,18 +29,19 @@ export const seedParticipantsFromUsers = async (req, res) => {
     }
     
     if (!lottery) {
-      // Create a new lottery
-      lottery = await Lottery.create({
-        eventName: 'Retail Champions Contest 2025',
-        createdBy: req.user._id,
+      return res.status(404).json({
+        success: false,
+        message: 'No active contest found. Please create a contest first.',
       });
-      console.log('✅ Created new lottery:', lottery.eventName);
     }
 
-    console.log('📋 Using contest:', lottery.eventName);
+    console.log('📋 Using contest:', lottery.eventName, 'Package:', lottery.package);
 
-    // Get all users (excluding admins)
-    let users = await User.find({ role: 'user' }).select('_id name');
+    // Get all users (excluding admins) matching the lottery's package
+    let users = await User.find({ 
+      role: 'user',
+      package: lottery.package 
+    }).select('_id name');
     
     if (users.length === 0) {
       return res.status(400).json({

@@ -24,7 +24,7 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const { name, phoneNumber, password, aadhaarNumber, panNumber } = validation.data;
+    const { name, phoneNumber, password, aadhaarNumber, panNumber, registrationId, package: userPackage } = validation.data;
 
     // Check if at least one file was uploaded (either image or selfie)
     const files = req.files || {};
@@ -38,10 +38,11 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists with same phone number, aadhaar or PAN
+    // Check if user already exists with same phone number, aadhaar, PAN or registrationId
     const orQuery = [{ phoneNumber }];
     if (aadhaarNumber) orQuery.push({ aadhaarNumber });
     if (panNumber) orQuery.push({ panNumber: panNumber.toUpperCase() });
+    if (registrationId) orQuery.push({ registrationId });
 
     const existingUser = await User.findOne({
       $or: orQuery,
@@ -55,6 +56,8 @@ export const registerUser = async (req, res) => {
         message = 'User with this Aadhaar number already exists';
       } else if (panNumber && existingUser.panNumber === panNumber.toUpperCase()) {
         message = 'User with this PAN number already exists';
+      } else if (registrationId && existingUser.registrationId === registrationId) {
+        message = 'User with this ID already registered';
       }
       
       return res.status(409).json({
@@ -104,6 +107,7 @@ export const registerUser = async (req, res) => {
       phoneNumber,
       password: password || 'Retail@123',
       couponCode,
+      package: userPackage,
     };
 
     if (uploadResult) {
@@ -121,6 +125,9 @@ export const registerUser = async (req, res) => {
     }
     if (panNumber) {
       userData.panNumber = panNumber.toUpperCase();
+    }
+    if (registrationId) {
+      userData.registrationId = registrationId;
     }
 
     // Create user
@@ -140,6 +147,8 @@ export const registerUser = async (req, res) => {
         imageUrl: user.imageUrl,
         selfieUrl: user.selfieUrl,
         couponCode: user.couponCode,
+        registrationId: user.registrationId,
+        package: user.package,
         createdAt: user.createdAt,
       },
 
@@ -198,6 +207,7 @@ export const getUsers = async (req, res) => {
         { phoneNumber: { $regex: search, $options: 'i' } },
         { aadhaarNumber: { $regex: search, $options: 'i' } },
         { panNumber: { $regex: search, $options: 'i' } },
+        { registrationId: { $regex: search, $options: 'i' } },
       ];
     }
 

@@ -5,6 +5,7 @@ import connectDB from './config/db.js';
 import userRoutes from './routes/userRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import lotteryRoutes from './routes/lotteryRoutes.js';
+import packageRoutes from './routes/packageRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -23,7 +24,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5007;
 
 // Connect to MongoDB
 connectDB();
@@ -37,19 +38,7 @@ const allowedOrigins = process.env.FRONTEND_URLS
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      // In development, allow all localhost/127.0.0.1 variants
-      if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-        return callback(null, true);
-      }
-
-      const combinedOrigins = [...new Set([...allowedOrigins])];
-
-      if (combinedOrigins.includes(origin)) {
+      if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.warn(`🚫 CORS blocked for origin: ${origin}`);
@@ -70,6 +59,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/lottery', lotteryRoutes);
+app.use('/api/packages', packageRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
