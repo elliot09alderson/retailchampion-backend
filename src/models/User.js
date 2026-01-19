@@ -11,7 +11,6 @@ const userSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     password: {
@@ -22,11 +21,10 @@ const userSchema = new mongoose.Schema(
     aadhaarNumber: {
       type: String,
       required: false,
-      unique: true,
-      sparse: true,
       trim: true,
       validate: {
         validator: function(v) {
+          if (!v || v === '') return true;
           return /^\d{12}$/.test(v);
         },
         message: 'Aadhaar number must be exactly 12 digits'
@@ -35,8 +33,6 @@ const userSchema = new mongoose.Schema(
     panNumber: {
       type: String,
       required: false,
-      unique: true,
-      sparse: true, // Allows multiple null values
       trim: true,
       uppercase: true,
       validate: {
@@ -77,8 +73,6 @@ const userSchema = new mongoose.Schema(
     registrationId: {
       type: String,
       required: false,
-      unique: true,
-      sparse: true,
       trim: true,
       validate: {
         validator: function(v) {
@@ -118,6 +112,10 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 userSchema.index({ name: 'text' }); // Text index for search
 userSchema.index({ createdAt: -1 }); // Index for sorting by creation date
 userSchema.index({ name: 1, phoneNumber: 1 }); // Compound index for combined queries
+userSchema.index({ phoneNumber: 1, package: 1 }, { unique: true }); // Unique constraint: same phone can register for different packages, but not same package twice
+userSchema.index({ aadhaarNumber: 1, package: 1 }, { unique: true, sparse: true }); // Same Aadhaar can register for different packages
+userSchema.index({ panNumber: 1, package: 1 }, { unique: true, sparse: true }); // Same PAN can register for different packages
+userSchema.index({ registrationId: 1, package: 1 }, { unique: true, sparse: true }); // Same Registration ID can register for different packages
 
 const User = mongoose.model('User', userSchema);
 

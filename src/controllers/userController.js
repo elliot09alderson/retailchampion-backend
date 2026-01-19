@@ -38,32 +38,50 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists with same phone number, aadhaar, PAN or registrationId
-    const orQuery = [{ phoneNumber }];
-    if (aadhaarNumber) orQuery.push({ aadhaarNumber });
-    if (panNumber) orQuery.push({ panNumber: panNumber.toUpperCase() });
-    if (registrationId) orQuery.push({ registrationId });
-
-    const existingUser = await User.findOne({
-      $or: orQuery,
+    // Check if user already exists with same phone number AND same package
+    // Allow same phone number for different packages
+    const existingUserWithSamePackage = await User.findOne({
+      phoneNumber,
+      package: userPackage
     });
 
-    if (existingUser) {
-      let message = 'User already exists';
-      if (existingUser.phoneNumber === phoneNumber) {
-        message = 'User with this phone number already exists';
-      } else if (aadhaarNumber && existingUser.aadhaarNumber === aadhaarNumber) {
-        message = 'User with this Aadhaar number already exists';
-      } else if (panNumber && existingUser.panNumber === panNumber.toUpperCase()) {
-        message = 'User with this PAN number already exists';
-      } else if (registrationId && existingUser.registrationId === registrationId) {
-        message = 'User with this ID already registered';
-      }
-      
+    if (existingUserWithSamePackage) {
       return res.status(409).json({
         success: false,
-        message,
+        message: 'You are already registered for this package',
       });
+    }
+
+    // Check for duplicate aadhaar, PAN or registrationId for the SAME package
+    // Allow same credentials for different packages
+    if (aadhaarNumber) {
+      const existingAadhaar = await User.findOne({ aadhaarNumber, package: userPackage });
+      if (existingAadhaar) {
+        return res.status(409).json({
+          success: false,
+          message: 'You are already registered for this package with this Aadhaar number',
+        });
+      }
+    }
+
+    if (panNumber) {
+      const existingPan = await User.findOne({ panNumber: panNumber.toUpperCase(), package: userPackage });
+      if (existingPan) {
+        return res.status(409).json({
+          success: false,
+          message: 'You are already registered for this package with this PAN number',
+        });
+      }
+    }
+
+    if (registrationId) {
+      const existingRegId = await User.findOne({ registrationId, package: userPackage });
+      if (existingRegId) {
+        return res.status(409).json({
+          success: false,
+          message: 'You are already registered for this package with this Registration ID',
+        });
+      }
     }
 
     // Upload files to Cloudinary
