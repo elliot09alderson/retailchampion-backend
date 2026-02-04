@@ -30,12 +30,15 @@ const getEliminationCount = (roundNumber, totalActive) => {
       // If we are at ~50% from R1, this takes it to ~25%
       return Math.floor(totalActive * 0.5); 
     case 3: 
-      // We want to leave a small pool for the final spin (e.g., 5% or at least 2 people)
-      const targetSurvivors = Math.max(2, Math.ceil(totalActive * 0.2)); // Leave 20% of remaining for suspense
-      return totalActive - targetSurvivors;
+      // We want to leave a small pool for the final spin (e.g., ~15-20 people)
+      // Ensure we have enough for 5 winners + some losers
+      const targetSurvivors = Math.max(10, Math.ceil(totalActive * 0.2)); 
+      return Math.max(0, totalActive - targetSurvivors);
     case 4: 
-      // The grand finale: eliminate everyone except one champion
-      return totalActive - 1;
+      // The grand finale: eliminate everyone except 5 champions
+      // If we have 5 or less, we don't eliminate anyone (all are winners)
+      if (totalActive <= 5) return 0;
+      return totalActive - 5;
     default: 
       return 0;
   }
@@ -235,63 +238,104 @@ export const executeSpin = async (req, res) => {
       });
     }
 
-    // Calculate elimination count
-    const eliminationCount = getEliminationCount(nextRound, totalActive);
+    // Track eliminated data for response
+    let eliminatedCount = 0;
+    let eliminatedUserIds = [];
+    let eliminatedForDisplay = [];
 
-    // Select users to eliminate (secure random)
-    const toEliminate = selectRandomUsers(activeParticipants, eliminationCount);
-    const eliminatedUserIds = toEliminate.map(p => p.userId._id);
-    
-    // Get 10-20 random names for display
-    const displayCount = Math.min(20, eliminationCount);
-    const eliminatedForDisplay = selectRandomUsers(toEliminate, displayCount).map(p => ({
-      name: p.userId.name,
-      userId: p.userId._id,
-    }));
-
-    // Update participants status
-    await LotteryParticipant.updateMany(
-      { _id: { $in: toEliminate.map(p => p._id) } },
-      {
-        status: 'eliminated',
-        eliminatedInRound: nextRound,
-        eliminatedAt: new Date(),
-      }
-    );
-
-    // Check if there's a winner (Round 4)
-    let winnerId = null;
-    let winnerData = null;
+    // For Round 4: Special handling to guarantee exactly 5 winners
+    let winners = [];
     if (nextRound === 4) {
-      const winner = await LotteryParticipant.findOne({
-        lotteryId,
-        status: 'active',
-      }).populate('userId', 'name');
+      // In Round 4, we select 5 winners from active participants instead of eliminating
+      const winnerCount = Math.min(5, totalActive);
+      const selectedWinners = selectRandomUsers(activeParticipants, winnerCount);
+      const selectedWinnerIds = selectedWinners.map(p => p._id);
       
-      if (winner && winner.userId) {
-        winnerId = winner.userId._id;
-        winner.status = 'winner';
-        await winner.save();
-        winnerData = {
-          name: winner.userId.name,
-          participantId: winner._id,
-          selfieUrl: winner.userId.selfieUrl,
-        };
+      // Mark winners
+      await LotteryParticipant.updateMany(
+        { _id: { $in: selectedWinnerIds } },
+        { status: 'winner' }
+      );
+      
+      // Eliminate everyone else
+      const toEliminateInFinal = activeParticipants.filter(p => !selectedWinnerIds.includes(p._id));
+      if (toEliminateInFinal.length > 0) {
+        await LotteryParticipant.updateMany(
+          { _id: { $in: toEliminateInFinal.map(p => p._id) } },
+          {
+            status: 'eliminated',
+            eliminatedInRound: nextRound,
+            eliminatedAt: new Date(),
+          }
+        );
+        
+        // Track eliminated data for response
+        eliminatedCount = toEliminateInFinal.length;
+        eliminatedUserIds = toEliminateInFinal.map(p => p.userId._id);
+        eliminatedForDisplay = toEliminateInFinal.slice(0, 20).map(p => ({
+          name: p.userId.name,
+          userId: p.userId._id,
+        }));
+      }
+      
+      // Populate winner details
+      const winnerParticipants = await LotteryParticipant.find({
+        _id: { $in: selectedWinnerIds }
+      }).populate('userId', 'name selfieUrl phoneNumber');
+      
+      for (const p of winnerParticipants) {
+        if (p.userId) {
+          winners.push({
+            name: p.userId.name,
+            participantId: p._id,
+            selfieUrl: p.userId.selfieUrl,
+            userId: p.userId._id
+          });
+        }
       }
 
       lottery.status = 'completed';
       lottery.completedAt = new Date();
-      lottery.winnerId = winnerId;
+      // For backward compatibility, set the first one as "primary" winner
+      if (winners.length > 0) {
+        lottery.winnerId = winners[0].userId;
+      }
+    } else {
+      // Rounds 1-3: Normal elimination
+      // Calculate elimination count
+      const eliminationCount = getEliminationCount(nextRound, totalActive);
+
+      // Select users to eliminate (secure random)
+      const toEliminate = selectRandomUsers(activeParticipants, eliminationCount);
+      
+      // Store eliminated data for response
+      eliminatedCount = eliminationCount;
+      eliminatedUserIds = toEliminate.map(p => p.userId._id);
+      
+      // Get 10-20 random names for display
+      const displayCount = Math.min(20, eliminationCount);
+      eliminatedForDisplay = selectRandomUsers(toEliminate, displayCount).map(p => ({
+        name: p.userId.name,
+        userId: p.userId._id,
+      }));
+
+      // Update participants status
+      await LotteryParticipant.updateMany(
+        { _id: { $in: toEliminate.map(p => p._id) } },
+        {
+          status: 'eliminated',
+          eliminatedInRound: nextRound,
+          eliminatedAt: new Date(),
+        }
+      );
     }
 
-    // Create round record
     const round = await LotteryRound.create({
       lotteryId,
       roundNumber: nextRound,
       totalParticipants: totalActive,
-      eliminatedCount: eliminationCount,
+      eliminatedCount: eliminatedCount,
       eliminatedUserIds,
-      winnerId,
       executedBy: req.user._id,
     });
 
@@ -310,11 +354,10 @@ export const executeSpin = async (req, res) => {
       message: `Round ${nextRound} completed`,
       data: {
         round: nextRound,
-        eliminated: eliminationCount,
+        eliminated: eliminatedCount,
         remaining: remainingCount,
         eliminatedUsers: eliminatedForDisplay,
-        winnerId,
-        winner: winnerData,
+        winners: winners, // Return array of winners
         isComplete: nextRound === 4,
       },
     });

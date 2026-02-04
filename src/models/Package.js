@@ -20,6 +20,10 @@ const packageSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    isVip: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

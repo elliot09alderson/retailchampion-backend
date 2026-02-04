@@ -6,6 +6,8 @@ import userRoutes from './routes/userRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import lotteryRoutes from './routes/lotteryRoutes.js';
 import packageRoutes from './routes/packageRoutes.js';
+import pinRoutes from './routes/pinRoutes.js';
+import vipRoutes from './routes/vipRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -60,6 +62,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/lottery', lotteryRoutes);
 app.use('/api/packages', packageRoutes);
+app.use('/api/pins', pinRoutes);
+app.use('/api/vip', vipRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

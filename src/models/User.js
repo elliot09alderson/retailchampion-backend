@@ -86,6 +86,26 @@ const userSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // VIP System fields
+    vipStatus: {
+      type: String,
+      enum: ['none', 'vip', 'vvip'],
+      default: 'none',
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true, // Allow null values but unique when set
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    referralCount: {
+      type: Number,
+      default: 0,
+    },
   },
 
   {

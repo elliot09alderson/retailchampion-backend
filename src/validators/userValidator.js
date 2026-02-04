@@ -64,6 +64,23 @@ export const userRegistrationSchema = z.object({
     .nullable(),
   package: z
     .preprocess((val) => Number(val), z.number({ required_error: 'Package is required' })),
+  
+  pin: z
+    .string()
+    .trim()
+    .optional()
+    .nullable(),
+    
+  referralCode: z
+    .string()
+    .trim()
+    .optional()
+    .nullable(),
+  isVipRegistration: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => val === 'true'),
 });
 
 // Query parameters validation for GET API

@@ -37,7 +37,7 @@ export const getPackages = async (req, res) => {
 // @access  Private (Admin)
 export const createPackage = async (req, res) => {
   try {
-    const { name, amount, description } = req.body;
+    const { name, amount, description, isVip } = req.body;
 
     if (!name || !amount) {
       return res.status(400).json({
@@ -58,6 +58,7 @@ export const createPackage = async (req, res) => {
       name,
       amount,
       description,
+      isVip: isVip || false,
     });
 
     res.status(201).json({
@@ -80,11 +81,11 @@ export const createPackage = async (req, res) => {
 export const updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, amount, description, isActive } = req.body;
+    const { name, amount, description, isActive, isVip } = req.body;
 
     const updatedPackage = await Package.findByIdAndUpdate(
       id,
-      { name, amount, description, isActive },
+      { name, amount, description, isActive, isVip },
       { new: true, runValidators: true }
     );
 

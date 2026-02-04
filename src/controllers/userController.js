@@ -1,9 +1,12 @@
 import User from '../models/User.js';
+import Pin from '../models/Pin.js';
+import Package from '../models/Package.js';
 import cloudinary, { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import {
   validateUserRegistration,
   validateGetUsersQuery,
 } from '../validators/userValidator.js';
+import { processVIPRegistration } from './vipController.js';
 
 // @desc    Register a new user
 // @route   POST /api/users/register
@@ -24,7 +27,37 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const { name, phoneNumber, password, aadhaarNumber, panNumber, registrationId, package: userPackage } = validation.data;
+    const { name, phoneNumber, password, aadhaarNumber, panNumber, registrationId, package: userPackage, pin, referralCode, isVipRegistration } = validation.data;
+
+    // Check if this is a VIP package
+    const pkg = await Package.findOne({ amount: userPackage });
+    const isVipPackage = pkg && pkg.isVip;
+    
+    let pinRecord = null;
+    
+    // Validate PIN
+    if (!pin) {
+      return res.status(400).json({ success: false, message: 'PIN is required' });
+    }
+    
+    pinRecord = await Pin.findOne({ code: pin });
+    if (!pinRecord) {
+      return res.status(400).json({ success: false, message: 'Invalid PIN' });
+    }
+
+    if (pinRecord.package !== userPackage) {
+      return res.status(400).json({ success: false, message: 'PIN is not valid for the selected package' });
+    }
+
+    if (pinRecord.status !== 'active') {
+        return res.status(400).json({ success: false, message: `PIN is ${pinRecord.status}` });
+    }
+
+    if (new Date() > pinRecord.expiryDate) {
+        pinRecord.status = 'expired';
+        await pinRecord.save();
+        return res.status(400).json({ success: false, message: 'PIN has expired' });
+    }
 
     // Check if at least one file was uploaded (either image or selfie)
     const files = req.files || {};
@@ -151,23 +184,37 @@ export const registerUser = async (req, res) => {
     // Create user
     const user = await User.create(userData);
 
+    // Mark PIN as used
+    if (pinRecord) {
+      pinRecord.status = 'used';
+      pinRecord.isUsed = true;
+      pinRecord.usedBy = user._id;
+      await pinRecord.save();
+    }
 
+    // Process VIP registration if applicable
+    await processVIPRegistration(user._id, userPackage, referralCode);
+
+    // Fetch updated user with VIP status
+    const updatedUser = await User.findById(user._id).select('-password');
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       data: {
-        id: user._id,
-        name: user.name,
-        phoneNumber: user.phoneNumber,
-        aadhaarNumber: user.aadhaarNumber,
-        panNumber: user.panNumber,
-        imageUrl: user.imageUrl,
-        selfieUrl: user.selfieUrl,
-        couponCode: user.couponCode,
-        registrationId: user.registrationId,
-        package: user.package,
-        createdAt: user.createdAt,
+        id: updatedUser._id,
+        name: updatedUser.name,
+        phoneNumber: updatedUser.phoneNumber,
+        aadhaarNumber: updatedUser.aadhaarNumber,
+        panNumber: updatedUser.panNumber,
+        imageUrl: updatedUser.imageUrl,
+        selfieUrl: updatedUser.selfieUrl,
+        couponCode: updatedUser.couponCode,
+        registrationId: updatedUser.registrationId,
+        package: updatedUser.package,
+        vipStatus: updatedUser.vipStatus,
+        referralCode: updatedUser.referralCode,
+        createdAt: updatedUser.createdAt,
       },
 
     });
