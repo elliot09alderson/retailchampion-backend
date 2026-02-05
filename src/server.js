@@ -8,6 +8,7 @@ import lotteryRoutes from './routes/lotteryRoutes.js';
 import packageRoutes from './routes/packageRoutes.js';
 import pinRoutes from './routes/pinRoutes.js';
 import vipRoutes from './routes/vipRoutes.js';
+import { startScheduler } from './services/autoSpinScheduler.js';
 
 // Load environment variables
 dotenv.config();
@@ -129,6 +130,8 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Start Scheduler
+startScheduler();
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -441,3 +441,37 @@ export const deleteAllUsers = async (req, res) => {
     });
   }
 };
+// @desc    Get user count with filters
+// @route   GET /api/users/count
+// @access  Private
+export const getUserCount = async (req, res) => {
+  try {
+    const { package: pkg, startDate, endDate } = req.query;
+    
+    const query = { role: 'user' };
+
+    if (pkg) {
+      query.package = Number(pkg);
+    }
+    
+    if (startDate && endDate) {
+        query.createdAt = {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+        };
+    }
+
+    const count = await User.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      count,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user count',
+      error: error.message,
+    });
+  }
+};

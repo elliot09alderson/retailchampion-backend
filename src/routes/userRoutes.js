@@ -7,6 +7,7 @@ import {
   getUserById,
   deleteUser,
   deleteAllUsers,
+  getUserCount
 } from '../controllers/userController.js';
 
 
@@ -20,7 +21,15 @@ router.post('/register', upload.fields([{ name: 'image', maxCount: 1 }, { name: 
 // @route   GET /api/users
 // @desc    Get all users with search, filter, and pagination
 // @access  Private (requires auth header)
+// @route   GET /api/users
+// @desc    Get all users with search, filter, and pagination
+// @access  Private (requires auth header)
 router.get('/', protect, getUsers);
+
+// @route   GET /api/users/count
+// @desc    Get user count with filters
+// @access  Private
+router.get('/count', protect, getUserCount);
 
 // @route   GET /api/users/:id
 // @desc    Get user by ID

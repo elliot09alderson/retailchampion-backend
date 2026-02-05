@@ -11,6 +11,7 @@ import {
   getLotteryHistory,
   deleteLottery,
   deleteAllLotteries,
+  getSelectableLotteries
 } from '../controllers/lotteryController.js';
 import {
   seedParticipantsFromUsers,
@@ -39,7 +40,7 @@ router.delete('/history/all', protect, isAdmin, deleteAllLotteries);
 // Seed routes (Admin only)
 router.post('/seed/participants', protect, isAdmin, seedParticipantsFromUsers);
 router.get('/history', protect, isAdmin, getLotteryHistory);
+router.get('/selectable', protect, isAdmin, getSelectableLotteries);
 router.get('/seed/status', protect, isAdmin, getSeedStatus);
 
 export default router;
-

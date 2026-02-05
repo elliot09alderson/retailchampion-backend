@@ -3,6 +3,7 @@ import Lottery from '../models/Lottery.js';
 import LotteryParticipant from '../models/LotteryParticipant.js';
 import LotteryRound from '../models/LotteryRound.js';
 import User from '../models/User.js';
+import { performSpinLogic } from '../services/lotteryEngine.js';
 
 // Secure random selection using crypto
 const selectRandomUsers = (users, count) => {
@@ -47,12 +48,16 @@ const getEliminationCount = (roundNumber, totalActive) => {
 // Create new lottery event (Admin only)
 export const createLottery = async (req, res) => {
   try {
-    const { eventName, package: lotteryPackage } = req.body;
+    const { eventName, package: lotteryPackage, startDate, endDate, type = 'scheduled' } = req.body;
 
     if (!eventName) {
+       return res.status(400).json({ success: false, message: 'Event name is required' });
+    }
+
+    if (type === 'scheduled' && (!startDate || !endDate)) {
       return res.status(400).json({
         success: false,
-        message: 'Event name is required',
+        message: 'Start date and end date are required for scheduled contests',
       });
     }
 
@@ -77,24 +82,74 @@ export const createLottery = async (req, res) => {
       });
     }
 
-    // Check if there's already an active lottery
-    const activeLottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
-    if (activeLottery) {
-      return res.status(400).json({
-        success: false,
-        message: 'An active lottery already exists. Complete it first.',
-      });
-    }
+    // Check if there's already an active lottery - REMOVED to allow multiple
+    // const activeLottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
+    // if (activeLottery) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'An active lottery already exists. Complete it first.',
+    //   });
+    // }
+
+    const isManual = type === 'manual';
+    
+    // For manual, we can set default dates if needed, or leave them null if schema allows.
+    // Schema requires dates? No, we didn't remove required: true. 
+    // Wait, schema has required: true for dates. We should make them optional in schema or fake them for manual.
+    // Let's assume we relax schema requirements or provide defaults.
+    // For now, let's set current date for manual if not provided.
+    
+    const start = startDate ? new Date(startDate) : new Date();
+    // For manual, end date isn't really used for auto-spin, but maybe for registration window?
+    // Let's set it to far future for manual so registration stays open until manually closed? 
+    // Or just require user to set a "Registration Deadline" even for manual?
+    // User said "in scheduled take from and to... on manual contest only one winner".
+    // It implies manual doesn't need strict dates. 
+    // Let's set endDate to 1 day later by default for manual if not provided, just to satisfy DB.
+    const end = endDate ? new Date(endDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const lottery = await Lottery.create({
       eventName,
       package: finalPackage,
+      startDate: start,
+      endDate: end,
+      type,
+      isAutoSpin: !isManual, // Manual contests don't auto-spin
       createdBy: req.user._id,
+      status: 'pending' // Both start as pending
     });
+
+    // Auto-seed eligible participants
+    const userQuery = { role: 'user', package: finalPackage };
+    
+    // If it's a scheduled contest and dates are provided, filter by registration date
+    // Note: The prompt "participants according to Start From" suggests filtering users registered IN that window.
+    // However, usually contests are for ALL users. But since user explicitly asked for this behavior:
+    if (type === 'scheduled' && startDate && endDate) {
+        userQuery.createdAt = {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+        };
+    }
+
+    const eligibleUsers = await User.find(userQuery).select('_id');
+    
+    if (eligibleUsers.length > 0) {
+        const participants = eligibleUsers.map(user => ({
+            lotteryId: lottery._id,
+            userId: user._id,
+            status: 'active'
+        }));
+        
+        await LotteryParticipant.insertMany(participants);
+        
+        lottery.totalParticipants = participants.length;
+        await lottery.save();
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Lottery created successfully',
+      message: `Lottery created with ${eligibleUsers.length} participants`,
       data: lottery,
     });
   } catch (error) {
@@ -122,11 +177,26 @@ export const registerParticipant = async (req, res) => {
     }
 
     // Check if lottery is still accepting registrations
-    if (lottery.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Lottery registration is closed',
-      });
+    if (lottery.status !== 'pending' && lottery.status !== 'active') {
+       return res.status(400).json({
+         success: false,
+         message: 'Lottery registration is closed',
+       });
+    }
+    
+    const now = new Date();
+    if (now < new Date(lottery.startDate)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Registration has not started yet',
+        });
+    }
+    
+    if (now > new Date(lottery.endDate)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Registration period has ended',
+        });
     }
 
     // Check if user already registered
@@ -192,181 +262,28 @@ export const getParticipants = async (req, res) => {
   }
 };
 
+
+
+// ... (existing imports)
+
 // Execute spin (Admin only)
 export const executeSpin = async (req, res) => {
   try {
     const { lotteryId } = req.params;
-
-    const lottery = await Lottery.findById(lotteryId);
-    if (!lottery) {
-      return res.status(404).json({
-        success: false,
-        message: 'Lottery not found',
-      });
-    }
-
-    // Determine next round
-    const nextRound = lottery.currentRound + 1;
-    if (nextRound > 4) {
-      return res.status(400).json({
-        success: false,
-        message: 'Lottery already completed',
-      });
-    }
-
-    // Start lottery if first round
-    if (nextRound === 1) {
-      lottery.status = 'active';
-      lottery.startedAt = new Date();
-    }
-
-    // Get active participants
-    let activeParticipants = await LotteryParticipant.find({
-      lotteryId,
-      status: 'active',
-    }).populate('userId', 'name');
-
-    // Filter out participants whose user record was deleted
-    activeParticipants = activeParticipants.filter(p => p.userId !== null);
-
-    const totalActive = activeParticipants.length;
-
-    if (totalActive === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No active participants',
-      });
-    }
-
-    // Track eliminated data for response
-    let eliminatedCount = 0;
-    let eliminatedUserIds = [];
-    let eliminatedForDisplay = [];
-
-    // For Round 4: Special handling to guarantee exactly 5 winners
-    let winners = [];
-    if (nextRound === 4) {
-      // In Round 4, we select 5 winners from active participants instead of eliminating
-      const winnerCount = Math.min(5, totalActive);
-      const selectedWinners = selectRandomUsers(activeParticipants, winnerCount);
-      const selectedWinnerIds = selectedWinners.map(p => p._id);
-      
-      // Mark winners
-      await LotteryParticipant.updateMany(
-        { _id: { $in: selectedWinnerIds } },
-        { status: 'winner' }
-      );
-      
-      // Eliminate everyone else
-      const toEliminateInFinal = activeParticipants.filter(p => !selectedWinnerIds.includes(p._id));
-      if (toEliminateInFinal.length > 0) {
-        await LotteryParticipant.updateMany(
-          { _id: { $in: toEliminateInFinal.map(p => p._id) } },
-          {
-            status: 'eliminated',
-            eliminatedInRound: nextRound,
-            eliminatedAt: new Date(),
-          }
-        );
-        
-        // Track eliminated data for response
-        eliminatedCount = toEliminateInFinal.length;
-        eliminatedUserIds = toEliminateInFinal.map(p => p.userId._id);
-        eliminatedForDisplay = toEliminateInFinal.slice(0, 20).map(p => ({
-          name: p.userId.name,
-          userId: p.userId._id,
-        }));
-      }
-      
-      // Populate winner details
-      const winnerParticipants = await LotteryParticipant.find({
-        _id: { $in: selectedWinnerIds }
-      }).populate('userId', 'name selfieUrl phoneNumber');
-      
-      for (const p of winnerParticipants) {
-        if (p.userId) {
-          winners.push({
-            name: p.userId.name,
-            participantId: p._id,
-            selfieUrl: p.userId.selfieUrl,
-            userId: p.userId._id
-          });
-        }
-      }
-
-      lottery.status = 'completed';
-      lottery.completedAt = new Date();
-      // For backward compatibility, set the first one as "primary" winner
-      if (winners.length > 0) {
-        lottery.winnerId = winners[0].userId;
-      }
-    } else {
-      // Rounds 1-3: Normal elimination
-      // Calculate elimination count
-      const eliminationCount = getEliminationCount(nextRound, totalActive);
-
-      // Select users to eliminate (secure random)
-      const toEliminate = selectRandomUsers(activeParticipants, eliminationCount);
-      
-      // Store eliminated data for response
-      eliminatedCount = eliminationCount;
-      eliminatedUserIds = toEliminate.map(p => p.userId._id);
-      
-      // Get 10-20 random names for display
-      const displayCount = Math.min(20, eliminationCount);
-      eliminatedForDisplay = selectRandomUsers(toEliminate, displayCount).map(p => ({
-        name: p.userId.name,
-        userId: p.userId._id,
-      }));
-
-      // Update participants status
-      await LotteryParticipant.updateMany(
-        { _id: { $in: toEliminate.map(p => p._id) } },
-        {
-          status: 'eliminated',
-          eliminatedInRound: nextRound,
-          eliminatedAt: new Date(),
-        }
-      );
-    }
-
-    const round = await LotteryRound.create({
-      lotteryId,
-      roundNumber: nextRound,
-      totalParticipants: totalActive,
-      eliminatedCount: eliminatedCount,
-      eliminatedUserIds,
-      executedBy: req.user._id,
-    });
-
-    // Update lottery current round
-    lottery.currentRound = nextRound;
-    await lottery.save();
-
-    // Get remaining count
-    const remainingCount = await LotteryParticipant.countDocuments({
-      lotteryId,
-      status: 'active',
-    });
+    
+    // Call the shared logic
+    const result = await performSpinLogic(lotteryId, req.user._id);
 
     res.status(200).json({
       success: true,
-      message: `Round ${nextRound} completed`,
-      data: {
-        round: nextRound,
-        eliminated: eliminatedCount,
-        remaining: remainingCount,
-        eliminatedUsers: eliminatedForDisplay,
-        winners: winners, // Return array of winners
-        isComplete: nextRound === 4,
-      },
+      message: `Round ${result.round} completed`,
+      data: result,
     });
   } catch (error) {
     console.error('Execute spin error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to execute spin',
-      error: error.message,
+      message: error.message || 'Failed to execute spin',
     });
   }
 };
@@ -554,6 +471,7 @@ export const getLotteryHistory = async (req, res) => {
   try {
     const lotteries = await Lottery.find({ status: 'completed' })
       .populate('winnerId', 'name phoneNumber selfieUrl')
+      .populate('winners', 'name phoneNumber selfieUrl')
       .sort({ completedAt: -1 });
 
     res.status(200).json({
@@ -638,6 +556,27 @@ export const deleteAllLotteries = async (req, res) => {
       success: false,
       message: 'Failed to delete lottery records',
       error: error.message,
+    });
+  }
+};
+
+// Get all active or pending lotteries (for dropdown selection)
+export const getSelectableLotteries = async (req, res) => {
+  try {
+    const lotteries = await Lottery.find({
+      status: { $in: ['pending', 'active'] }
+    })
+    .select('eventName type status startDate endDate package')
+    .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: lotteries,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch lotteries',
     });
   }
 };

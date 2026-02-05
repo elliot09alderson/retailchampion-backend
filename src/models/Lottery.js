@@ -37,9 +37,30 @@ const lotterySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    winners: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
     package: {
       type: Number,
       required: true,
+    },
+    startDate: {
+      type: Date,
+      required: true,
+    },
+    endDate: {
+      type: Date,
+      required: true,
+    },
+    isAutoSpin: {
+      type: Boolean,
+      default: true,
+    },
+    type: {
+      type: String,
+      enum: ['manual', 'scheduled'],
+      default: 'scheduled',
     },
   },
   {
