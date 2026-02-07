@@ -24,6 +24,11 @@ const packageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    whatsappGroupLink: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
   {
     timestamps: true,

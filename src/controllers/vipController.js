@@ -404,6 +404,26 @@ export const processVIPRegistration = async (userId, packageAmount, referralCode
       }
     }
 
+    // If no referral code provided, default to admin
+    if (!referralCode) {
+      const admin = await User.findOne({ role: 'admin' });
+      if (admin) {
+        user.referredBy = admin._id;
+      }
+    }
+
+    // Generate referral code for the new VIP if not already present
+    if (!user.referralCode) {
+      let newReferralCode;
+      let isUnique = false;
+      while (!isUnique) {
+        newReferralCode = generateReferralCode();
+        const existing = await User.findOne({ referralCode: newReferralCode });
+        if (!existing) isUnique = true;
+      }
+      user.referralCode = newReferralCode;
+    }
+
     await user.save();
   } catch (error) {
     console.error('Process VIP Registration Error:', error);
@@ -579,3 +599,37 @@ export const loginVIP = async (req, res) => {
   }
 };
 
+// @desc    Delete single VIP by ID
+// @route   DELETE /api/vip/:id
+// @access  Private (Admin)
+export const deleteVIP = async (req, res) => {
+    try {
+        const vip = await User.findById(req.params.id);
+        if (!vip) {
+            return res.status(404).json({ success: false, message: 'VIP not found' });
+        }
+        
+        if(vip.role === 'admin') {
+             return res.status(400).json({ success: false, message: 'Cannot delete admin user via this route' });
+        }
+
+        await User.findByIdAndDelete(req.params.id);
+        res.status(200).json({ success: true, message: 'VIP user deleted successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Failed to delete VIP' });
+    }
+};
+
+// @desc    Delete all VIPs and VVIPs
+// @route   DELETE /api/vip/delete-all
+// @access  Private (Admin)
+export const deleteAllVIPs = async (req, res) => {
+    try {
+        await User.deleteMany({ vipStatus: { $in: ['vip', 'vvip'] } });
+        res.status(200).json({ success: true, message: 'All VIPs and VVIPs deleted successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Failed to delete all VIPs' });
+    }
+};

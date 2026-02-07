@@ -37,7 +37,7 @@ export const getPackages = async (req, res) => {
 // @access  Private (Admin)
 export const createPackage = async (req, res) => {
   try {
-    const { name, amount, description, isVip } = req.body;
+    const { name, amount, description, isVip, whatsappGroupLink } = req.body;
 
     if (!name || !amount) {
       return res.status(400).json({
@@ -59,6 +59,7 @@ export const createPackage = async (req, res) => {
       amount,
       description,
       isVip: isVip || false,
+      whatsappGroupLink: whatsappGroupLink || '',
     });
 
     res.status(201).json({
@@ -81,11 +82,11 @@ export const createPackage = async (req, res) => {
 export const updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, amount, description, isActive, isVip } = req.body;
+    const { name, amount, description, isActive, isVip, whatsappGroupLink } = req.body;
 
     const updatedPackage = await Package.findByIdAndUpdate(
       id,
-      { name, amount, description, isActive, isVip },
+      { name, amount, description, isActive, isVip, whatsappGroupLink },
       { new: true, runValidators: true }
     );
 

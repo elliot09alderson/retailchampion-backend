@@ -11,7 +11,8 @@ import {
   getLotteryHistory,
   deleteLottery,
   deleteAllLotteries,
-  getSelectableLotteries
+  getSelectableLotteries,
+  getPublicWinners
 } from '../controllers/lotteryController.js';
 import {
   seedParticipantsFromUsers,
@@ -22,6 +23,7 @@ import { protect, isAdmin } from '../middleware/auth.js';
 const router = express.Router();
 
 // Public routes
+router.get('/public/winners', protect, getPublicWinners);
 router.get('/active', getActiveLottery);
 router.get('/:lotteryId/status', getLotteryStatus);
 router.get('/:lotteryId/winner', getWinner);

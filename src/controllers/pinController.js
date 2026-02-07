@@ -165,8 +165,27 @@ export const getPinStats = async (req, res) => {
   try {
     const stats = await Pin.aggregate([
       {
+        $project: {
+          package: 1,
+          status: 1,
+          expiryDate: 1,
+          effectiveStatus: {
+            $cond: {
+              if: {
+                $and: [
+                  { $eq: ['$status', 'active'] },
+                  { $lt: ['$expiryDate', new Date()] }
+                ]
+              },
+              then: 'expired',
+              else: '$status'
+            }
+          }
+        }
+      },
+      {
         $group: {
-          _id: { package: '$package', status: '$status' },
+          _id: { package: '$package', status: '$effectiveStatus' },
           count: { $sum: 1 }
         }
       },

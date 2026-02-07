@@ -470,6 +470,41 @@ export const getRoundDetails = async (req, res) => {
 // Get lottery history (completed lotteries)
 export const getLotteryHistory = async (req, res) => {
   try {
+    // LAZY PROCESSING: Check for expired scheduled lotteries and process them immediately
+    const now = new Date();
+    const expiredLotteries = await Lottery.find({
+      status: { $in: ['pending', 'active'] },
+      endDate: { $lt: now },
+      isAutoSpin: true
+    });
+
+    if (expiredLotteries.length > 0) {
+      console.log(`[LazyProcess] Found ${expiredLotteries.length} expired lotteries. Processing now...`);
+      const executorId = req.user ? req.user._id : null; 
+
+      for (const lottery of expiredLotteries) {
+        try {
+          let isComplete = false;
+          let roundCounter = 0;
+          // Process all rounds until completion
+          while (!isComplete && roundCounter < 10) {
+             const result = await performSpinLogic(lottery._id, executorId);
+             isComplete = result.isComplete;
+             roundCounter++;
+          }
+          console.log(`[LazyProcess] Lottery ${lottery.eventName} processed. Completed: ${isComplete}`);
+        } catch (err) {
+          console.error(`[LazyProcess] Failed to process lottery ${lottery._id}:`, err.message);
+          // If no participants errors, force complete to show in history
+          if (err.message.includes('No active participants')) {
+              lottery.status = 'completed';
+              lottery.completedAt = new Date();
+              await lottery.save();
+          }
+        }
+      }
+    }
+
     const lotteries = await Lottery.find({ status: 'completed' })
       .populate('winnerId', 'name phoneNumber selfieUrl')
       .populate('winners', 'name phoneNumber selfieUrl')
@@ -486,6 +521,27 @@ export const getLotteryHistory = async (req, res) => {
       success: false,
       message: 'Failed to fetch lottery history',
       error: error.message,
+    });
+  }
+};
+
+// Get public winner history
+export const getPublicWinners = async (req, res) => {
+  try {
+    const lotteries = await Lottery.find({ status: 'completed' })
+      .select('eventName winners prizes completedAt')
+      .populate('winners', 'name selfieUrl phoneNumber')
+      .sort({ completedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: lotteries,
+    });
+  } catch (error) {
+    console.error('Get public winners error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch winners',
     });
   }
 };

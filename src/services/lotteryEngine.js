@@ -68,14 +68,14 @@ export const performSpinLogic = async (lotteryId, userId) => {
       
       const winnerCount = Math.min(targetWinnerCount, totalActive);
       const selectedWinners = selectRandomUsers(activeParticipants, winnerCount);
-      const selectedWinnerIds = selectedWinners.map(p => p._id);
+      const selectedWinnerIds = selectedWinners.map(p => p._id.toString());
       
       await LotteryParticipant.updateMany(
-        { _id: { $in: selectedWinnerIds } },
+        { _id: { $in: selectedWinners.map(p => p._id) } },
         { status: 'winner' }
       );
       
-      const toEliminateInFinal = activeParticipants.filter(p => !selectedWinnerIds.includes(p._id));
+      const toEliminateInFinal = activeParticipants.filter(p => !selectedWinnerIds.includes(p._id.toString()));
       if (toEliminateInFinal.length > 0) {
         await LotteryParticipant.updateMany(
           { _id: { $in: toEliminateInFinal.map(p => p._id) } },

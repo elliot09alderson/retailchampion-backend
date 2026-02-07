@@ -59,3 +59,24 @@ export const deleteGalleryItem = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete' });
   }
 };
+
+// @desc    Update item
+// @route   PUT /api/gallery/:id
+// @access  Private (Admin)
+export const updateGalleryItem = async (req, res) => {
+  try {
+    const { description } = req.body;
+    const item = await GalleryItem.findById(req.params.id);
+
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found' });
+    }
+
+    item.description = description;
+    await item.save();
+
+    res.status(200).json({ success: true, data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update item' });
+  }
+};
