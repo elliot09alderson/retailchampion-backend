@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import Package from '../models/Package.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { uploadToCloudinary } from '../config/cloudinary.js';
 
 // Generate a unique referral code
 const generateReferralCode = () => {
@@ -228,6 +229,57 @@ export const getVIPProfile = async (req, res) => {
       message: 'Failed to fetch profile',
     });
   }
+};
+
+// @desc    Delete gallery item (admin)
+// @route   DELETE /api/vip/gallery/:userId
+// @access  Private (Admin)
+export const deleteGalleryItem = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { imageUrl } = req.body;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+             return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        user.gallery = user.gallery.filter(url => url !== imageUrl);
+        await user.save();
+        
+        res.status(200).json({ success: true, message: 'Image removed from gallery', gallery: user.gallery });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Failed to delete image' });
+    }
+};
+
+// @desc    Upload item to gallery (admin)
+// @route   POST /api/vip/gallery/:userId
+// @access  Private (Admin)
+export const uploadGalleryItem = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!req.file) {
+             return res.status(400).json({ success: false, message: 'No image uploaded' });
+        }
+        
+        const user = await User.findById(userId);
+        if(!user) return res.status(404).json({ success: false, message: 'User not found' });
+        
+        // Upload to Cloudinary
+        const result = await uploadToCloudinary(req.file.buffer, 'retailchampions/gallery');
+        
+        user.gallery.push(result.secure_url);
+        await user.save();
+        
+        res.status(200).json({ success: true, message: 'Image uploaded', gallery: user.gallery, url: result.secure_url });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Upload failed' });
+    }
 };
 
 // @desc    Validate referral code and get referrer info

@@ -10,8 +10,11 @@ import {
   verifyCoupon,
   setVIPPassword,
   loginVIP,
+  uploadGalleryItem,
+  deleteGalleryItem,
 } from '../controllers/vipController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
+import upload from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -30,6 +33,8 @@ router.get('/', protect, isAdmin, getAllVIPs);
 router.get('/vvip', protect, isAdmin, getAllVVIPs);
 router.post('/:id/generate-referral', protect, isAdmin, generateVIPReferralCode);
 router.get('/:id/referrals', protect, isAdmin, getVIPReferrals);
+router.post('/gallery/:userId', protect, isAdmin, upload.single('image'), uploadGalleryItem);
+router.delete('/gallery/:userId', protect, isAdmin, deleteGalleryItem);
 
 export default router;
 

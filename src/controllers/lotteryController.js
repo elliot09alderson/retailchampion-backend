@@ -116,7 +116,8 @@ export const createLottery = async (req, res) => {
       type,
       isAutoSpin: !isManual, // Manual contests don't auto-spin
       createdBy: req.user._id,
-      status: 'pending' // Both start as pending
+      status: 'pending', // Both start as pending
+      prizes: req.body.prizes || []
     });
 
     // Auto-seed eligible participants

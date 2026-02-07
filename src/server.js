@@ -8,6 +8,7 @@ import lotteryRoutes from './routes/lotteryRoutes.js';
 import packageRoutes from './routes/packageRoutes.js';
 import pinRoutes from './routes/pinRoutes.js';
 import vipRoutes from './routes/vipRoutes.js';
+import galleryRoutes from './routes/galleryRoutes.js';
 import { startScheduler } from './services/autoSpinScheduler.js';
 
 // Load environment variables
@@ -65,6 +66,7 @@ app.use('/api/lottery', lotteryRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/pins', pinRoutes);
 app.use('/api/vip', vipRoutes);
+app.use('/api/gallery', galleryRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -62,6 +62,10 @@ const lotterySchema = new mongoose.Schema(
       enum: ['manual', 'scheduled'],
       default: 'scheduled',
     },
+    prizes: {
+      type: [Number],
+      default: [],
+    },
   },
   {
     timestamps: true,
