@@ -35,10 +35,12 @@ export const userRegistrationSchema = z.object({
 
   aadhaarNumber: z
     .string()
-    .regex(aadhaarRegex, 'Aadhaar number must be exactly 12 digits')
     .trim()
     .optional()
-    .nullable(),
+    .nullable()
+    .refine((val) => !val || val === '' || aadhaarRegex.test(val), {
+      message: 'Aadhaar number must be exactly 12 digits',
+    }),
 
   panNumber: z
     .string()

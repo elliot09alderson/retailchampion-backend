@@ -124,14 +124,13 @@ export const createLottery = async (req, res) => {
     const userQuery = { role: 'user', package: finalPackage };
     
     // If it's a scheduled contest and dates are provided, filter by registration date
-    // Note: The prompt "participants according to Start From" suggests filtering users registered IN that window.
-    // However, usually contests are for ALL users. But since user explicitly asked for this behavior:
-    if (type === 'scheduled' && startDate && endDate) {
-        userQuery.createdAt = {
-            $gte: new Date(startDate),
-            $lte: new Date(endDate)
-        };
-    }
+    // Note: Removed strict date filtering based on user feedback/issue where no participants were selected
+    // if (type === 'scheduled' && startDate && endDate) {
+    //     userQuery.createdAt = {
+    //         $gte: new Date(startDate),
+    //         $lte: new Date(endDate)
+    //     };
+    // }
 
     const eligibleUsers = await User.find(userQuery).select('_id');
     
@@ -484,6 +483,15 @@ export const getLotteryHistory = async (req, res) => {
 
       for (const lottery of expiredLotteries) {
         try {
+          // If no participants, force complete (lazy fix for incorrectly created contests)
+          if (lottery.totalParticipants === 0) {
+             lottery.status = 'completed';
+             lottery.completedAt = new Date();
+             await lottery.save();
+             console.log(`[LazyProcess] Lottery ${lottery.eventName} forced completed (no participants).`);
+             continue;
+          }
+
           let isComplete = false;
           let roundCounter = 0;
           // Process all rounds until completion
@@ -505,10 +513,13 @@ export const getLotteryHistory = async (req, res) => {
       }
     }
 
-    const lotteries = await Lottery.find({ status: 'completed' })
+
+
+    // Fetch all lotteries (completed and pending) so admin can see everything
+    const lotteries = await Lottery.find({})
       .populate('winnerId', 'name phoneNumber selfieUrl')
       .populate('winners', 'name phoneNumber selfieUrl')
-      .sort({ completedAt: -1 });
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
