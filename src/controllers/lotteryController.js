@@ -4,6 +4,7 @@ import LotteryParticipant from '../models/LotteryParticipant.js';
 import LotteryRound from '../models/LotteryRound.js';
 import User from '../models/User.js';
 import { performSpinLogic } from '../services/lotteryEngine.js';
+import { logger } from '../utils/logger.js';
 
 // Secure random selection using crypto
 const selectRandomUsers = (users, count) => {
@@ -135,11 +136,11 @@ export const createLottery = async (req, res) => {
     const eligibleUsers = await User.find(userQuery).select('_id');
     
     // Log creation details
-    console.log(`[LOTTERY_CREATE] Created: ${eventName}`);
-    console.log(`[LOTTERY_CREATE] Start: ${start.toISOString()} (Server Time: ${new Date().toISOString()})`);
-    console.log(`[LOTTERY_CREATE] End: ${end.toISOString()}`);
-    console.log(`[LOTTERY_CREATE] Type: ${type}, AutoSpin: ${!isManual}`);
-    console.log(`[LOTTERY_CREATE] Users Seeded: ${eligibleUsers.length}`);
+    logger.info(`[LOTTERY_CREATE] Created: ${eventName}`);
+    logger.info(`[LOTTERY_CREATE] Start: ${start.toISOString()} (Server Time: ${new Date().toISOString()})`);
+    logger.info(`[LOTTERY_CREATE] End: ${end.toISOString()}`);
+    logger.info(`[LOTTERY_CREATE] Type: ${type}, AutoSpin: ${!isManual}`);
+    logger.info(`[LOTTERY_CREATE] Users Seeded: ${eligibleUsers.length}`);
 
     if (eligibleUsers.length > 0) {
         const participants = eligibleUsers.map(user => ({
@@ -160,7 +161,7 @@ export const createLottery = async (req, res) => {
       data: lottery,
     });
   } catch (error) {
-    console.error('Create lottery error:', error);
+    logger.error(`Create lottery error: ${error.message}`);
     res.status(500).json({
       success: false,
       message: 'Failed to create lottery',
@@ -193,13 +194,13 @@ export const registerParticipant = async (req, res) => {
     
     const now = new Date();
     // Log registration attempt
-    console.log(`[REGISTER_ATTEMPT] User: ${req.user._id}, Lottery: ${lotteryId}`);
-    console.log(`[REGISTER_ATTEMPT] Server Time: ${now.toISOString()}`);
-    console.log(`[REGISTER_ATTEMPT] Start: ${lottery.startDate.toISOString()}`);
-    console.log(`[REGISTER_ATTEMPT] End: ${lottery.endDate.toISOString()}`);
+    logger.info(`[REGISTER_ATTEMPT] User: ${req.user._id}, Lottery: ${lotteryId}`);
+    logger.info(`[REGISTER_ATTEMPT] Server Time: ${now.toISOString()}`);
+    logger.info(`[REGISTER_ATTEMPT] Start: ${lottery.startDate.toISOString()}`);
+    logger.info(`[REGISTER_ATTEMPT] End: ${lottery.endDate.toISOString()}`);
 
     if (now < new Date(lottery.startDate)) {
-        console.log(`[REGISTER_FAIL] Too early. Diff: ${(new Date(lottery.startDate).getTime() - now.getTime()) / 1000}s`);
+        logger.warn(`[REGISTER_FAIL] Too early. Diff: ${(new Date(lottery.startDate).getTime() - now.getTime()) / 1000}s`);
         return res.status(400).json({
             success: false,
             message: 'Registration has not started yet',
@@ -207,7 +208,7 @@ export const registerParticipant = async (req, res) => {
     }
     
     if (now > new Date(lottery.endDate)) {
-        console.log(`[REGISTER_FAIL] Too late. Diff: ${(now.getTime() - new Date(lottery.endDate).getTime()) / 1000}s`);
+        logger.warn(`[REGISTER_FAIL] Too late. Diff: ${(now.getTime() - new Date(lottery.endDate).getTime()) / 1000}s`);
         return res.status(400).json({
             success: false,
             message: 'Registration period has ended',
@@ -244,7 +245,7 @@ export const registerParticipant = async (req, res) => {
       data: participant,
     });
   } catch (error) {
-    console.error('Register participant error:', error);
+    logger.error(`Register participant error: ${error.message}`);
     res.status(500).json({
       success: false,
       message: 'Failed to register for lottery',
@@ -486,7 +487,7 @@ export const getLotteryHistory = async (req, res) => {
   try {
     // LAZY PROCESSING: Check for expired scheduled lotteries and process them immediately
     const now = new Date();
-    console.log(`[HISTORY_CHECK] Server Time: ${now.toISOString()}`);
+    logger.info(`[HISTORY_CHECK] Server Time: ${now.toISOString()}`);
 
     const expiredLotteries = await Lottery.find({
       status: { $in: ['pending', 'active'] },
@@ -495,7 +496,7 @@ export const getLotteryHistory = async (req, res) => {
     });
 
     if (expiredLotteries.length > 0) {
-      console.log(`[LazyProcess] Found ${expiredLotteries.length} expired lotteries. Processing now...`);
+      logger.info(`[LazyProcess] Found ${expiredLotteries.length} expired lotteries. Processing now...`);
       const executorId = req.user ? req.user._id : null; 
 
       for (const lottery of expiredLotteries) {
@@ -505,7 +506,7 @@ export const getLotteryHistory = async (req, res) => {
              lottery.status = 'completed';
              lottery.completedAt = new Date();
              await lottery.save();
-             console.log(`[LazyProcess] Lottery ${lottery.eventName} forced completed (no participants).`);
+             logger.warn(`[LazyProcess] Lottery ${lottery.eventName} forced completed (no participants).`);
              continue;
           }
 
@@ -517,9 +518,9 @@ export const getLotteryHistory = async (req, res) => {
              isComplete = result.isComplete;
              roundCounter++;
           }
-          console.log(`[LazyProcess] Lottery ${lottery.eventName} processed. Completed: ${isComplete}`);
+          logger.info(`[LazyProcess] Lottery ${lottery.eventName} processed. Completed: ${isComplete}`);
         } catch (err) {
-          console.error(`[LazyProcess] Failed to process lottery ${lottery._id}:`, err.message);
+          logger.error(`[LazyProcess] Failed to process lottery ${lottery._id}: ${err.message}`);
           // If no participants errors, force complete to show in history
           if (err.message.includes('No active participants')) {
               lottery.status = 'completed';

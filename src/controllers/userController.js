@@ -71,51 +71,8 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists with same phone number AND same package
-    // Allow same phone number for different packages
-    const existingUserWithSamePackage = await User.findOne({
-      phoneNumber,
-      package: userPackage
-    });
-
-    if (existingUserWithSamePackage) {
-      return res.status(409).json({
-        success: false,
-        message: 'You are already registered for this package',
-      });
-    }
-
-    // Check for duplicate aadhaar, PAN or registrationId for the SAME package
-    // Allow same credentials for different packages
-    if (aadhaarNumber) {
-      const existingAadhaar = await User.findOne({ aadhaarNumber, package: userPackage });
-      if (existingAadhaar) {
-        return res.status(409).json({
-          success: false,
-          message: 'You are already registered for this package with this Aadhaar number',
-        });
-      }
-    }
-
-    if (panNumber) {
-      const existingPan = await User.findOne({ panNumber: panNumber.toUpperCase(), package: userPackage });
-      if (existingPan) {
-        return res.status(409).json({
-          success: false,
-          message: 'You are already registered for this package with this PAN number',
-        });
-      }
-    }
-
-    if (registrationId) {
-      const existingRegId = await User.findOne({ registrationId, package: userPackage });
-      if (existingRegId) {
-        return res.status(409).json({
-          success: false,
-          message: 'You are already registered for this package with this Registration ID',
-        });
-      }
-    }
+    // ALLOW MULTIPLE REGISTRATIONS: Removed checks for existing phone/aadhaar/pan/regId
+    // Previous checks were here (identifying duplicates by package + field)
 
     // Upload files to Cloudinary
     let uploadResult = null;
@@ -223,8 +180,9 @@ export const registerUser = async (req, res) => {
 
     // Handle MongoDB duplicate key error (11000)
     if (error.code === 11000) {
+      console.error('Duplicate key error details:', error.keyPattern); // Log key pattern
       const field = Object.keys(error.keyPattern)[0];
-      const message = `A user with this ${field} already exists.`;
+      const message = `A user with this ${field} already exists (Duplicate Entry).`;
       return res.status(409).json({
         success: false,
         message,

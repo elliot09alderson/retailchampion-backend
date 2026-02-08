@@ -136,10 +136,11 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 userSchema.index({ name: 'text' }); // Text index for search
 userSchema.index({ createdAt: -1 }); // Index for sorting by creation date
 userSchema.index({ name: 1, phoneNumber: 1 }); // Compound index for combined queries
-userSchema.index({ phoneNumber: 1, package: 1 }, { unique: true }); // Unique constraint: same phone can register for different packages, but not same package twice
-userSchema.index({ aadhaarNumber: 1, package: 1 }, { unique: true, sparse: true }); // Same Aadhaar can register for different packages
-userSchema.index({ panNumber: 1, package: 1 }, { unique: true, sparse: true }); // Same PAN can register for different packages
-userSchema.index({ registrationId: 1, package: 1 }, { unique: true, sparse: true }); // Same Registration ID can register for different packages
+// Removed unique constraints on phoneNumber and aadhaarNumber to allow multiple registrations
+userSchema.index({ phoneNumber: 1, package: 1 }); 
+userSchema.index({ aadhaarNumber: 1, package: 1 }); 
+userSchema.index({ panNumber: 1, package: 1 }); 
+userSchema.index({ registrationId: 1, package: 1 });
 
 const User = mongoose.model('User', userSchema);
 
