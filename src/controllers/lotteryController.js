@@ -134,6 +134,13 @@ export const createLottery = async (req, res) => {
 
     const eligibleUsers = await User.find(userQuery).select('_id');
     
+    // Log creation details
+    console.log(`[LOTTERY_CREATE] Created: ${eventName}`);
+    console.log(`[LOTTERY_CREATE] Start: ${start.toISOString()} (Server Time: ${new Date().toISOString()})`);
+    console.log(`[LOTTERY_CREATE] End: ${end.toISOString()}`);
+    console.log(`[LOTTERY_CREATE] Type: ${type}, AutoSpin: ${!isManual}`);
+    console.log(`[LOTTERY_CREATE] Users Seeded: ${eligibleUsers.length}`);
+
     if (eligibleUsers.length > 0) {
         const participants = eligibleUsers.map(user => ({
             lotteryId: lottery._id,
@@ -185,7 +192,14 @@ export const registerParticipant = async (req, res) => {
     }
     
     const now = new Date();
+    // Log registration attempt
+    console.log(`[REGISTER_ATTEMPT] User: ${req.user._id}, Lottery: ${lotteryId}`);
+    console.log(`[REGISTER_ATTEMPT] Server Time: ${now.toISOString()}`);
+    console.log(`[REGISTER_ATTEMPT] Start: ${lottery.startDate.toISOString()}`);
+    console.log(`[REGISTER_ATTEMPT] End: ${lottery.endDate.toISOString()}`);
+
     if (now < new Date(lottery.startDate)) {
+        console.log(`[REGISTER_FAIL] Too early. Diff: ${(new Date(lottery.startDate).getTime() - now.getTime()) / 1000}s`);
         return res.status(400).json({
             success: false,
             message: 'Registration has not started yet',
@@ -193,6 +207,7 @@ export const registerParticipant = async (req, res) => {
     }
     
     if (now > new Date(lottery.endDate)) {
+        console.log(`[REGISTER_FAIL] Too late. Diff: ${(now.getTime() - new Date(lottery.endDate).getTime()) / 1000}s`);
         return res.status(400).json({
             success: false,
             message: 'Registration period has ended',
@@ -471,6 +486,8 @@ export const getLotteryHistory = async (req, res) => {
   try {
     // LAZY PROCESSING: Check for expired scheduled lotteries and process them immediately
     const now = new Date();
+    console.log(`[HISTORY_CHECK] Server Time: ${now.toISOString()}`);
+
     const expiredLotteries = await Lottery.find({
       status: { $in: ['pending', 'active'] },
       endDate: { $lt: now },
