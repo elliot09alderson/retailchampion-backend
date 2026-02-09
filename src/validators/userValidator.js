@@ -107,6 +107,9 @@ export const getUsersQuerySchema = z.object({
     .default('createdAt'),
 
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+
+  contest: z.string().optional().nullable(),
+  package: z.string().optional().nullable().transform(val => val ? parseInt(val, 10) : undefined),
 });
 
 export const validateUserRegistration = (data) => {

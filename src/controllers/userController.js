@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Pin from '../models/Pin.js';
 import Package from '../models/Package.js';
+import LotteryParticipant from '../models/LotteryParticipant.js';
 import cloudinary, { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import {
   validateUserRegistration,
@@ -218,10 +219,20 @@ export const getUsers = async (req, res) => {
       });
     }
 
-    const { page, limit, search, sortBy, sortOrder } = validation.data;
+    const { page, limit, search, sortBy, sortOrder, package: pkg, contest } = validation.data;
 
     // Build query filter
     const filter = {};
+
+    if (pkg) {
+      filter.package = pkg;
+    }
+
+    if (contest) {
+      const participants = await LotteryParticipant.find({ lotteryId: contest }).select('userId').lean();
+      const userIds = participants.map(p => p.userId);
+      filter._id = { $in: userIds };
+    }
 
     // Text search on name, phone, aadhaar, and PAN
     if (search) {

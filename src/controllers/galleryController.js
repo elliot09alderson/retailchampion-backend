@@ -18,7 +18,7 @@ export const getGalleryItems = async (req, res) => {
 // @access  Private (Admin)
 export const uploadGalleryItem = async (req, res) => {
   try {
-    const { description } = req.body;
+    const { description, heading, subheading } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image uploaded' });
@@ -29,6 +29,8 @@ export const uploadGalleryItem = async (req, res) => {
     const item = await GalleryItem.create({
       imageUrl: result.secure_url,
       publicId: result.public_id,
+      heading,
+      subheading,
       description
     });
 
@@ -65,13 +67,15 @@ export const deleteGalleryItem = async (req, res) => {
 // @access  Private (Admin)
 export const updateGalleryItem = async (req, res) => {
   try {
-    const { description } = req.body;
+    const { description, heading, subheading } = req.body;
     const item = await GalleryItem.findById(req.params.id);
 
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
 
+    item.heading = heading;
+    item.subheading = subheading;
     item.description = description;
     await item.save();
 
