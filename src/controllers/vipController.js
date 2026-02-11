@@ -681,75 +681,132 @@ export const deleteAllVIPs = async (req, res) => {
 // @access  Private (Admin)
 export const rechargeVIP = async (req, res) => {
   try {
-    const { couponCode, referralForms, expiryDate, type, packName } = req.body; // type: 'vip' or 'retail'
+    const { couponCode, referralForms, expiryDate, type, packName, rechargeAll } = req.body; // type: 'vip' or 'retail'
 
-    const user = await User.findOne({ couponCode });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    if (type === 'vip') {
-        user.vipReferralFormsLeft = (user.vipReferralFormsLeft || 0) + parseInt(referralForms);
-        if (packName) user.activeVipPackName = packName;
-    } else {
-        // Default to retail if type is not specified or retail
-        user.retailReferralFormsLeft = (user.retailReferralFormsLeft || 0) + parseInt(referralForms);
-        if (packName) user.activeRetailPackName = packName;
-    }
-    
-    // Maintain backward compatibility for now if needed, or just rely on these new fields.
-    // Let's also update the total valid forms for simple display if needed, but UI should split.
-    user.referralFormsLeft = (user.vipReferralFormsLeft || 0) + (user.retailReferralFormsLeft || 0);
-
-    // Expiry date handling
-    if (expiryDate) {
-      const newExpiry = new Date(expiryDate);
-      if (type === 'vip') {
-        user.vipReferralExpiryDate = newExpiry;
-      } else {
-        user.retailReferralExpiryDate = newExpiry;
-      }
-      user.referralExpiryDate = newExpiry;
-    }
-    
-    // Create history
+    // Price lookup (once)
     let historyPrice = 0;
     if (packName) {
         try {
              const rPack = await RechargePack.findOne({ name: packName });
              if (rPack) historyPrice = rPack.price;
-        } catch (e) {
-             console.error('Pack lookup failed', e);
-        }
+        } catch (e) { console.error('Pack lookup failed', e); }
     }
+
+    const performRecharge = async (targetUser) => {
+        if (type === 'vip') {
+            targetUser.vipReferralFormsLeft = (targetUser.vipReferralFormsLeft || 0) + parseInt(referralForms);
+            if (packName) targetUser.activeVipPackName = packName;
+        } else {
+            // Default to retail if type is not specified or retail
+            targetUser.retailReferralFormsLeft = (targetUser.retailReferralFormsLeft || 0) + parseInt(referralForms);
+            if (packName) targetUser.activeRetailPackName = packName;
+        }
+        
+        targetUser.referralFormsLeft = (targetUser.vipReferralFormsLeft || 0) + (targetUser.retailReferralFormsLeft || 0);
+
+        // Expiry date handling
+        if (expiryDate) {
+          const newExpiry = new Date(expiryDate);
+          if (type === 'vip') {
+            targetUser.vipReferralExpiryDate = newExpiry;
+          } else {
+            targetUser.retailReferralExpiryDate = newExpiry;
+          }
+          targetUser.referralExpiryDate = newExpiry;
+        }
+        
+        await RechargeHistory.create({
+            user: targetUser._id,
+            admin: req.user ? req.user._id : undefined,
+            type: type || 'retail',
+            packName: packName || 'Unknown Pack',
+            price: historyPrice,
+            referralForms: parseInt(referralForms),
+            expiryDate: new Date(expiryDate)
+        });
+        
+        await targetUser.save();
+    };
+
+    if (rechargeAll || couponCode === 'ALL') {
+        // Find all VIP users
+        const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] } });
+        if (users.length === 0) {
+            return res.status(404).json({ success: false, message: 'No VIP users found' });
+        }
+        
+        await Promise.all(users.map(u => performRecharge(u)));
+        
+        return res.status(200).json({ 
+            success: true, 
+            message: `Successfully recharged ${users.length} VIP users`
+        });
+    } else {
+        const user = await User.findOne({ couponCode });
+        if (!user) {
+          return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        await performRecharge(user);
     
-    await RechargeHistory.create({
-        user: user._id,
-        admin: req.user ? req.user._id : undefined,
-        type: type || 'retail',
-        packName: packName || 'Unknown Pack',
-        price: historyPrice,
-        referralForms: parseInt(referralForms),
-        expiryDate: new Date(expiryDate)
-    });
-
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: `${type === 'vip' ? 'VIP' : 'Retail'} referral forms recharged successfully`,
-      data: {
-        vipReferralFormsLeft: user.vipReferralFormsLeft,
-        retailReferralFormsLeft: user.retailReferralFormsLeft,
-        referralExpiryDate: user.referralExpiryDate,
-        vipReferralExpiryDate: user.vipReferralExpiryDate,
-        retailReferralExpiryDate: user.retailReferralExpiryDate
-      }
-    });
+        return res.status(200).json({
+          success: true,
+          message: `${type === 'vip' ? 'VIP' : 'Retail'} referral forms recharged successfully`,
+          data: {
+            vipReferralFormsLeft: user.vipReferralFormsLeft,
+            retailReferralFormsLeft: user.retailReferralFormsLeft,
+            referralExpiryDate: user.referralExpiryDate,
+            vipReferralExpiryDate: user.vipReferralExpiryDate,
+            retailReferralExpiryDate: user.retailReferralExpiryDate
+          }
+        });
+    }
   } catch (error) {
     console.error('Recharge Error:', error);
-    res.status(500).json({ success: false, message: 'Recharge failed' });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
+};
+
+
+// @route   POST /api/vip/deactivate-recharge
+// @access  Private (Admin)
+export const deactivateRecharge = async (req, res) => {
+    try {
+        const { couponCode, deactivateAll, type } = req.body; // type: 'vip', 'retail', or undefined (both)
+        
+        const resetUser = async (u) => {
+             // Reset Balance
+             if (!type || type === 'vip') u.vipReferralFormsLeft = 0;
+             if (!type || type === 'retail') u.retailReferralFormsLeft = 0;
+             
+             // Update aggregate
+             u.referralFormsLeft = (u.vipReferralFormsLeft || 0) + (u.retailReferralFormsLeft || 0);
+             await u.save();
+             
+             // Invalidate History (Set formsUsed = referralForms)
+             const criteria = { user: u._id, $expr: { $lt: ["$formsUsed", "$referralForms"] } };
+             if (type) criteria.type = type;
+             
+             await RechargeHistory.updateMany(criteria, [
+                 { $set: { formsUsed: "$referralForms" } }
+             ]);
+        };
+
+        if (deactivateAll) {
+             const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] } });
+             await Promise.all(users.map(u => resetUser(u)));
+             return res.status(200).json({ success: true, message: `Deactivated recharges for ${users.length} VIP users` });
+        } else {
+             const user = await User.findOne({ couponCode });
+             if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+             
+             await resetUser(user);
+             return res.status(200).json({ success: true, message: 'Deactivated user recharge' });
+        }
+    } catch (error) {
+        console.error('Deactivate Recharge Error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
 };
 
 // @desc    Register a new user via VIP referral
