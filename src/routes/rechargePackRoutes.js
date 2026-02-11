@@ -5,15 +5,18 @@ import {
     updateRechargePack,
     deleteRechargePack
 } from '../controllers/rechargePackController.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 router.route('/')
-    .get(getAllRechargePacks) // Public access for VIPs too, or specific middleware
-    .post(createRechargePack); // Admin Only
+    .get(getAllRechargePacks)
+    .post(protect, admin, createRechargePack);
 
 router.route('/:id')
-    .put(updateRechargePack) // Admin Only
-    .delete(deleteRechargePack); // Admin Only
+    .put(protect, admin, updateRechargePack)
+    .delete(protect, admin, deleteRechargePack);
+
+
 
 export default router;
