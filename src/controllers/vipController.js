@@ -693,8 +693,16 @@ export const rechargeVIP = async (req, res) => {
     // Let's also update the total valid forms for simple display if needed, but UI should split.
     user.referralFormsLeft = (user.vipReferralFormsLeft || 0) + (user.retailReferralFormsLeft || 0);
 
+    // Expiry date handling
     if (expiryDate) {
-      user.referralExpiryDate = new Date(expiryDate);
+      const newExpiry = new Date(expiryDate);
+      if (type === 'vip') {
+        user.vipReferralExpiryDate = newExpiry;
+      } else {
+        user.retailReferralExpiryDate = newExpiry;
+      }
+      // Also update generic date for compatibility if needed, but prefer specific
+      user.referralExpiryDate = newExpiry;
     }
     
     await user.save();
@@ -705,7 +713,9 @@ export const rechargeVIP = async (req, res) => {
       data: {
         vipReferralFormsLeft: user.vipReferralFormsLeft,
         retailReferralFormsLeft: user.retailReferralFormsLeft,
-        referralExpiryDate: user.referralExpiryDate
+        referralExpiryDate: user.referralExpiryDate,
+        vipReferralExpiryDate: user.vipReferralExpiryDate,
+        retailReferralExpiryDate: user.retailReferralExpiryDate
       }
     });
   } catch (error) {
@@ -721,6 +731,8 @@ export const registerReferredUser = async (req, res) => {
     try {
         const { name, formType } = req.body;
         const phoneNumber = req.body.phoneNumber ? req.body.phoneNumber.trim() : '';
+        const idNumber = req.body.idNumber ? req.body.idNumber.trim() : ''; // New field
+        
         // Parse packageAmount as it comes as string in FormData
         const parsedPackageAmount = req.body.packageAmount ? parseInt(req.body.packageAmount) : null;
         
@@ -729,8 +741,13 @@ export const registerReferredUser = async (req, res) => {
         const referrer = await User.findById(referrerId);
         if(!referrer) return res.status(404).json({ success: false, message: 'Referrer not found' });
 
-        if (referrer.referralExpiryDate && new Date() > new Date(referrer.referralExpiryDate)) {
-             return res.status(400).json({ success: false, message: 'Referral capability expired.' });
+        // Check specific expiry based on form type
+        const expiryDate = formType === 'vip' 
+            ? referrer.vipReferralExpiryDate || referrer.referralExpiryDate 
+            : referrer.retailReferralExpiryDate || referrer.referralExpiryDate;
+            
+        if (expiryDate && new Date() > new Date(expiryDate)) {
+             return res.status(400).json({ success: false, message: `${formType === 'vip' ? 'VIP' : 'Retail'} referral capability expired.` });
         }
 
         // Check availability
@@ -745,20 +762,33 @@ export const registerReferredUser = async (req, res) => {
             }
         }
         
-        // Handle Image Upload
+        // Handle Image Uploads
         let selfieUrl = '';
-        if (req.file) {
-            try {
-                // Determine folder based on formType or user role
-                const folder = formType === 'vip' ? 'vip-profiles' : 'user-profiles';
-                const uploadResult = await uploadToCloudinary(req.file.buffer, folder);
-                selfieUrl = uploadResult.secure_url;
-            } catch (uploadError) {
-                console.error('Image upload failed:', uploadError);
+        let billImageUrl = ''; // New field
+        
+        // Handle files from upload.fields
+        if (req.files) {
+            // Profile Image
+            if (req.files['image'] && req.files['image'][0]) {
+                try {
+                    const folder = formType === 'vip' ? 'vip-profiles' : 'user-profiles';
+                    const uploadResult = await uploadToCloudinary(req.files['image'][0].buffer, folder);
+                    selfieUrl = uploadResult.secure_url;
+                } catch (uploadError) {
+                    console.error('Profile Image upload failed:', uploadError);
+                }
+            }
+            
+            // Bill Image
+            if (req.files['billImage'] && req.files['billImage'][0]) {
+                try {
+                    const uploadResult = await uploadToCloudinary(req.files['billImage'][0].buffer, 'bills');
+                    billImageUrl = uploadResult.secure_url;
+                } catch (uploadError) {
+                    console.error('Bill Image upload failed:', uploadError);
+                }
             }
         }
-
-
 
         // Generate Login Code (Coupon Code) if needed for VIP login
         let couponCode;
@@ -794,7 +824,9 @@ export const registerReferredUser = async (req, res) => {
             couponCode: couponCode,
             referralCode: referralCode,
             selfieUrl: selfieUrl,
-            role: 'user'
+            role: 'user',
+            idNumber: idNumber, // Save ID Number
+            billImageUrl: billImageUrl // Save Bill Image URL
         });
 
         // Generate Registration ID (Retail Champion)

@@ -46,7 +46,7 @@ router.delete('/gallery/:userId', protect, isAdmin, deleteGalleryItem);
 router.delete('/delete-all', protect, isAdmin, deleteAllVIPs);
 router.delete('/:id', protect, isAdmin, deleteVIP);
 router.post('/recharge', protect, isAdmin, rechargeVIP);
-router.post('/register-referral', protect, upload.single('image'), registerReferredUser);
+router.post('/register-referral', protect, upload.fields([{ name: 'image', maxCount: 1 }, { name: 'billImage', maxCount: 1 }]), registerReferredUser);
 
 export default router;
 

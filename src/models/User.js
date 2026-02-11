@@ -139,6 +139,22 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    retailReferralExpiryDate: {
+      type: Date,
+      default: null,
+    },
+    vipReferralExpiryDate: {
+      type: Date,
+      default: null,
+    },
+    idNumber: {
+      type: String,
+      required: false,
+    },
+    billImageUrl: {
+      type: String,
+      required: false,
+    },
     gallery: {
       type: [String],
       default: [],
