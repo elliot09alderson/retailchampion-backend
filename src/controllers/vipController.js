@@ -378,6 +378,42 @@ export const registerWithReferral = async (req, res) => {
   }
 };
 
+// @desc    Update VIP profile (KYC)
+// @route   PUT /api/vip/profile
+// @access  Private
+export const updateVIPProfile = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { name, phoneNumber, aadhaarNumber, panNumber, bankName, bankAccountNumber, ifscCode } = req.body;
+        
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        
+        // Update fields if provided
+        if (name) user.name = name;
+        if (phoneNumber) user.phoneNumber = phoneNumber;
+        
+        // KYC Fields - Allow explict empty string to clear? Or just if provided?
+        // User asked to "add and edit". 
+        if (aadhaarNumber !== undefined) user.aadhaarNumber = aadhaarNumber;
+        if (panNumber !== undefined) user.panNumber = panNumber;
+        if (bankName !== undefined) user.bankName = bankName;
+        if (bankAccountNumber !== undefined) user.bankAccountNumber = bankAccountNumber;
+        if (ifscCode !== undefined) user.ifscCode = ifscCode;
+        
+        await user.save();
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'Profile updated successfully', 
+            data: user 
+        });
+    } catch (error) {
+        console.error('Update Profile Error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update profile. ' + error.message });
+    }
+};
+
 // Helper function to be used by user registration
 export const processVIPRegistration = async (userId, packageAmount, referralCode = null) => {
   try {
@@ -631,5 +667,186 @@ export const deleteAllVIPs = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: 'Failed to delete all VIPs' });
+    }
+};
+
+// @desc    Recharge VIP account with referral forms
+// @route   POST /api/vip/recharge
+// @access  Private (Admin)
+export const rechargeVIP = async (req, res) => {
+  try {
+    const { couponCode, referralForms, expiryDate, type } = req.body; // type: 'vip' or 'retail'
+
+    const user = await User.findOne({ couponCode });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (type === 'vip') {
+        user.vipReferralFormsLeft = (user.vipReferralFormsLeft || 0) + parseInt(referralForms);
+    } else {
+        // Default to retail if type is not specified or retail
+        user.retailReferralFormsLeft = (user.retailReferralFormsLeft || 0) + parseInt(referralForms);
+    }
+    
+    // Maintain backward compatibility for now if needed, or just rely on these new fields.
+    // Let's also update the total valid forms for simple display if needed, but UI should split.
+    user.referralFormsLeft = (user.vipReferralFormsLeft || 0) + (user.retailReferralFormsLeft || 0);
+
+    if (expiryDate) {
+      user.referralExpiryDate = new Date(expiryDate);
+    }
+    
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `${type === 'vip' ? 'VIP' : 'Retail'} referral forms recharged successfully`,
+      data: {
+        vipReferralFormsLeft: user.vipReferralFormsLeft,
+        retailReferralFormsLeft: user.retailReferralFormsLeft,
+        referralExpiryDate: user.referralExpiryDate
+      }
+    });
+  } catch (error) {
+    console.error('Recharge Error:', error);
+    res.status(500).json({ success: false, message: 'Recharge failed' });
+  }
+};
+
+// @desc    Register a new user via VIP referral
+// @route   POST /api/vip/register-referral
+// @access  Private (VIP)
+export const registerReferredUser = async (req, res) => {
+    try {
+        const { name, formType } = req.body;
+        const phoneNumber = req.body.phoneNumber ? req.body.phoneNumber.trim() : '';
+        // Parse packageAmount as it comes as string in FormData
+        const parsedPackageAmount = req.body.packageAmount ? parseInt(req.body.packageAmount) : null;
+        
+        const referrerId = req.user._id;
+
+        const referrer = await User.findById(referrerId);
+        if(!referrer) return res.status(404).json({ success: false, message: 'Referrer not found' });
+
+        if (referrer.referralExpiryDate && new Date() > new Date(referrer.referralExpiryDate)) {
+             return res.status(400).json({ success: false, message: 'Referral capability expired.' });
+        }
+
+        // Check availability
+        if (formType === 'vip') {
+            if ((referrer.vipReferralFormsLeft || 0) <= 0) {
+                return res.status(400).json({ success: false, message: 'No VIP referral forms left. Please recharge.' });
+            }
+        } else {
+            // retail
+             if ((referrer.retailReferralFormsLeft || 0) <= 0) {
+                return res.status(400).json({ success: false, message: 'No Retail referral forms left. Please recharge.' });
+            }
+        }
+        
+        // Handle Image Upload
+        let selfieUrl = '';
+        if (req.file) {
+            try {
+                // Determine folder based on formType or user role
+                const folder = formType === 'vip' ? 'vip-profiles' : 'user-profiles';
+                const uploadResult = await uploadToCloudinary(req.file.buffer, folder);
+                selfieUrl = uploadResult.secure_url;
+            } catch (uploadError) {
+                console.error('Image upload failed:', uploadError);
+            }
+        }
+
+
+
+        // Generate Login Code (Coupon Code) if needed for VIP login
+        let couponCode;
+        let isUniqueCoupon = false;
+        while (!isUniqueCoupon) {
+            couponCode = 'VIP' + Math.floor(100000 + Math.random() * 900000); // Simple 6 digit
+            const existing = await User.findOne({ couponCode });
+            if (!existing) isUniqueCoupon = true;
+        }
+
+        // Generate Referral Code if VIP
+        let referralCode; // undefined by default
+        if(formType === 'vip') {
+            let isUniqueRef = false;
+            while (!isUniqueRef) {
+                // Simple referral code generation
+                referralCode = 'REF' + Math.floor(10000 + Math.random() * 90000); 
+                // Or use existing helper if exported? Assuming locally defined here for simplicity or import
+                // Using simplified logic here as helper might not be exported
+                const existing = await User.findOne({ referralCode });
+                if (!existing) isUniqueRef = true;
+            }
+        }
+
+        // Create user
+        const newUser = new User({
+            name,
+            phoneNumber,
+            package: parsedPackageAmount || (formType === 'vip' ? 5000 : 100),
+            vipStatus: formType === 'vip' ? 'vip' : 'none',
+            referredBy: referrerId,
+            password: 'Retail@123', // Default password
+            couponCode: couponCode,
+            referralCode: referralCode,
+            selfieUrl: selfieUrl,
+            role: 'user'
+        });
+
+        // Generate Registration ID (Retail Champion)
+        const registrationId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+        newUser.registrationId = registrationId;
+
+        await newUser.save();
+
+        // Decrement forms count on referrer
+        if (formType === 'vip') {
+             referrer.vipReferralFormsLeft = (referrer.vipReferralFormsLeft || 0) - 1;
+        } else {
+             referrer.retailReferralFormsLeft = (referrer.retailReferralFormsLeft || 0) - 1;
+        }
+        
+        // Update aggregated total
+        referrer.referralFormsLeft = (referrer.vipReferralFormsLeft || 0) + (referrer.retailReferralFormsLeft || 0);
+        
+        // Update referral counts
+        const referralCount = await User.countDocuments({ referredBy: referrerId });
+        referrer.referralCount = referralCount;
+        
+        await referrer.save();
+
+        // Check for VVIP promotion
+        // checkAndPromoteToVVIP is defined in this file.
+        // Assuming it's available in scope
+        try {
+            await checkAndPromoteToVVIP(referrerId);
+        } catch (e) {
+            console.error("VVIP Promotion Error", e);
+        }
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'User registered successfully',
+            data: {
+                user: newUser,
+                formsLeft: referrer.referralFormsLeft,
+                couponCode: newUser.couponCode,
+                referralCode: newUser.referralCode
+            }
+        });
+
+    } catch (error) {
+        console.error('Referral Registration Error:', error);
+        if (error.code === 11000) {
+             return res.status(400).json({
+                 success: false,
+                 message: `Registration failed: Duplicate key error. ${error.message}`
+             });
+        }
+        res.status(500).json({ success: false, message: 'Registration failed: ' + error.message });
     }
 };

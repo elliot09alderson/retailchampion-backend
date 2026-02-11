@@ -14,6 +14,9 @@ import {
   uploadGalleryItem,
   deleteVIP,
   deleteAllVIPs,
+  rechargeVIP,
+  registerReferredUser,
+  updateVIPProfile,
 } from '../controllers/vipController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
 import upload from '../middleware/upload.js';
@@ -30,7 +33,7 @@ router.post('/set-password', setVIPPassword);
 router.post('/login', loginVIP);
 
 // Protected routes (VIP/VVIP users)
-router.get('/profile', protect, getVIPProfile);
+router.route('/profile').get(protect, getVIPProfile).put(protect, updateVIPProfile);
 
 // Admin routes
 router.get('/', protect, isAdmin, getAllVIPs);
@@ -42,6 +45,8 @@ router.post('/gallery/:userId', protect, isAdmin, upload.single('image'), upload
 router.delete('/gallery/:userId', protect, isAdmin, deleteGalleryItem);
 router.delete('/delete-all', protect, isAdmin, deleteAllVIPs);
 router.delete('/:id', protect, isAdmin, deleteVIP);
+router.post('/recharge', protect, isAdmin, rechargeVIP);
+router.post('/register-referral', protect, upload.single('image'), registerReferredUser);
 
 export default router;
 

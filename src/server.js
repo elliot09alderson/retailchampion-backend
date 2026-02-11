@@ -10,6 +10,7 @@ import pinRoutes from './routes/pinRoutes.js';
 import vipRoutes from './routes/vipRoutes.js';
 import galleryRoutes from './routes/galleryRoutes.js';
 import logRoutes from './routes/logRoutes.js';
+import rechargePackRoutes from './routes/rechargePackRoutes.js';
 import { startScheduler } from './services/autoSpinScheduler.js';
 
 // Load environment variables
@@ -69,6 +70,7 @@ app.use('/api/pins', pinRoutes);
 app.use('/api/vip', vipRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/logs', logRoutes);
+app.use('/api/recharge-packs', rechargePackRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

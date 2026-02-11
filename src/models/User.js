@@ -44,6 +44,22 @@ const userSchema = new mongoose.Schema(
         message: 'PAN number must be in format: ABCDE1234F'
       }
     },
+    bankName: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+    bankAccountNumber: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+    ifscCode: {
+      type: String,
+      required: false,
+      trim: true,
+      uppercase: true,
+    },
     imageUrl: {
       type: String,
       required: false,
@@ -105,6 +121,23 @@ const userSchema = new mongoose.Schema(
     referralCount: {
       type: Number,
       default: 0,
+    },
+    referralFormsLeft: {
+      type: Number,
+      default: 0,
+    },
+    vipReferralFormsLeft: {
+        type: Number,
+        default: 0,
+    },
+    retailReferralFormsLeft: {
+        type: Number,
+        default: 0,
+    },
+
+    referralExpiryDate: {
+      type: Date,
+      default: null,
     },
     gallery: {
       type: [String],

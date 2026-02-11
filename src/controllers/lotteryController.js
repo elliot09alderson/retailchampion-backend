@@ -49,7 +49,7 @@ const getEliminationCount = (roundNumber, totalActive) => {
 // Create new lottery event (Admin only)
 export const createLottery = async (req, res) => {
   try {
-    const { eventName, package: lotteryPackage, startDate, endDate, type = 'scheduled' } = req.body;
+    const { eventName, package: lotteryPackage, startDate, endDate, type = 'scheduled', participantIds } = req.body;
 
     if (!eventName) {
        return res.status(400).json({ success: false, message: 'Event name is required' });
@@ -62,25 +62,33 @@ export const createLottery = async (req, res) => {
       });
     }
 
-    // Check if at least one package is selected.
-    if (!lotteryPackage) {
-      return res.status(400).json({
-        success: false,
-        message: 'Package selection is required',
-      });
-    }
+    // Check if Super Winner Contest
+    const isSuperWinner = participantIds && Array.isArray(participantIds) && participantIds.length > 0;
+    let finalPackage = Number(lotteryPackage);
 
-    const finalPackage = Number(lotteryPackage);
+    if (isSuperWinner) {
+        finalPackage = 0; // Use 0 for Super Winner contests
+        // Skip validation check for Super Winner
+    } else {
+        // Regular Package Validation
+        if (!lotteryPackage) {
+          return res.status(400).json({
+            success: false,
+            message: 'Package selection is required',
+          });
+        }
 
-    // Verify package exists in dynamic packages
-    const Package = (await import('../models/Package.js')).default;
-    const packageExists = await Package.findOne({ amount: finalPackage });
-    
-    if (!packageExists) {
-      return res.status(400).json({
-        success: false,
-        message: 'Selected package is not valid or inactive',
-      });
+        if (finalPackage !== 0) {
+            const Package = (await import('../models/Package.js')).default;
+            const packageExists = await Package.findOne({ amount: finalPackage });
+            
+            if (!packageExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Selected package is not valid or inactive',
+                });
+            }
+        }
     }
 
     // Check if there's already an active lottery - REMOVED to allow multiple
@@ -122,18 +130,18 @@ export const createLottery = async (req, res) => {
     });
 
     // Auto-seed eligible participants
-    const userQuery = { role: 'user', package: finalPackage };
+    let eligibleUsers = [];
     
-    // If it's a scheduled contest and dates are provided, filter by registration date
-    // Note: Removed strict date filtering based on user feedback/issue where no participants were selected
-    // if (type === 'scheduled' && startDate && endDate) {
-    //     userQuery.createdAt = {
-    //         $gte: new Date(startDate),
-    //         $lte: new Date(endDate)
-    //     };
-    // }
+    if (isSuperWinner) {
+        eligibleUsers = await User.find({ _id: { $in: participantIds } }).select('_id');
+    } else {
+        const userQuery = { role: 'user' };
+        if (finalPackage !== 0) {
+            userQuery.package = finalPackage;
+        }
+        eligibleUsers = await User.find(userQuery).select('_id');
+    }
 
-    const eligibleUsers = await User.find(userQuery).select('_id');
     
     // Log creation details
     logger.info(`[LOTTERY_CREATE] Created: ${eventName}`);
