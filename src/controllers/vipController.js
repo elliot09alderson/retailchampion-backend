@@ -675,7 +675,7 @@ export const deleteAllVIPs = async (req, res) => {
 // @access  Private (Admin)
 export const rechargeVIP = async (req, res) => {
   try {
-    const { couponCode, referralForms, expiryDate, type } = req.body; // type: 'vip' or 'retail'
+    const { couponCode, referralForms, expiryDate, type, packName } = req.body; // type: 'vip' or 'retail'
 
     const user = await User.findOne({ couponCode });
     if (!user) {
@@ -683,10 +683,18 @@ export const rechargeVIP = async (req, res) => {
     }
 
     if (type === 'vip') {
-        user.vipReferralFormsLeft = (user.vipReferralFormsLeft || 0) + parseInt(referralForms);
+        if ((user.vipReferralFormsLeft || 0) > 0) {
+            return res.status(400).json({ success: false, message: `Cannot recharge: User still has ${(user.vipReferralFormsLeft || 0)} VIP forms.` });
+        }
+        user.vipReferralFormsLeft = parseInt(referralForms); // Set new balance (was adding before)
+        if (packName) user.activeVipPackName = packName;
     } else {
         // Default to retail if type is not specified or retail
-        user.retailReferralFormsLeft = (user.retailReferralFormsLeft || 0) + parseInt(referralForms);
+        if ((user.retailReferralFormsLeft || 0) > 0) {
+             return res.status(400).json({ success: false, message: `Cannot recharge: User still has ${(user.retailReferralFormsLeft || 0)} Retail forms.` });
+        }
+        user.retailReferralFormsLeft = parseInt(referralForms); // Set new balance
+        if (packName) user.activeRetailPackName = packName;
     }
     
     // Maintain backward compatibility for now if needed, or just rely on these new fields.

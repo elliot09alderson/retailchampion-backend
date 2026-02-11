@@ -155,6 +155,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
     },
+    activeRetailPackName: {
+      type: String,
+      default: '',
+    },
+    activeVipPackName: {
+      type: String,
+      default: '',
+    },
     gallery: {
       type: [String],
       default: [],
