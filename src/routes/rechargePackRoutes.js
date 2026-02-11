@@ -5,17 +5,17 @@ import {
     updateRechargePack,
     deleteRechargePack
 } from '../controllers/rechargePackController.js';
-import { protect, admin } from '../middleware/authMiddleware.js';
+import { protect, isAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.route('/')
     .get(getAllRechargePacks)
-    .post(protect, admin, createRechargePack);
+    .post(protect, isAdmin, createRechargePack);
 
 router.route('/:id')
-    .put(protect, admin, updateRechargePack)
-    .delete(protect, admin, deleteRechargePack);
+    .put(protect, isAdmin, updateRechargePack)
+    .delete(protect, isAdmin, deleteRechargePack);
 
 
 
