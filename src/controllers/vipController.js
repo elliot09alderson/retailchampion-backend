@@ -1,5 +1,7 @@
 import User from '../models/User.js';
+import RechargeHistory from '../models/RechargeHistory.js';
 import Package from '../models/Package.js';
+import RechargePack from '../models/RechargePack.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { uploadToCloudinary } from '../config/cloudinary.js';
@@ -210,6 +212,9 @@ export const getVIPProfile = async (req, res) => {
     const vipCount = referrals.filter(r => r.vipStatus === 'vip').length;
     const vvipCount = referrals.filter(r => r.vipStatus === 'vvip').length;
 
+    // Get recharge history
+    const rechargeHistory = await RechargeHistory.find({ user: userId }).sort({ createdAt: -1 });
+
     res.status(200).json({
       success: true,
       data: {
@@ -220,6 +225,7 @@ export const getVIPProfile = async (req, res) => {
           vvipCount,
         },
         referrals,
+        rechargeHistory,
       },
     });
   } catch (error) {
@@ -709,10 +715,30 @@ export const rechargeVIP = async (req, res) => {
       } else {
         user.retailReferralExpiryDate = newExpiry;
       }
-      // Also update generic date for compatibility if needed, but prefer specific
       user.referralExpiryDate = newExpiry;
     }
     
+    // Create history
+    let historyPrice = 0;
+    if (packName) {
+        try {
+             const rPack = await RechargePack.findOne({ name: packName });
+             if (rPack) historyPrice = rPack.price;
+        } catch (e) {
+             console.error('Pack lookup failed', e);
+        }
+    }
+    
+    await RechargeHistory.create({
+        user: user._id,
+        admin: req.user ? req.user._id : undefined,
+        type: type || 'retail',
+        packName: packName || 'Unknown Pack',
+        price: historyPrice,
+        referralForms: parseInt(referralForms),
+        expiryDate: new Date(expiryDate)
+    });
+
     await user.save();
 
     res.status(200).json({
