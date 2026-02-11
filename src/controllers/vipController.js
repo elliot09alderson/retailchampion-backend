@@ -689,17 +689,11 @@ export const rechargeVIP = async (req, res) => {
     }
 
     if (type === 'vip') {
-        if ((user.vipReferralFormsLeft || 0) > 0) {
-            return res.status(400).json({ success: false, message: `Cannot recharge: User still has ${(user.vipReferralFormsLeft || 0)} VIP forms.` });
-        }
-        user.vipReferralFormsLeft = parseInt(referralForms); // Set new balance (was adding before)
+        user.vipReferralFormsLeft = (user.vipReferralFormsLeft || 0) + parseInt(referralForms);
         if (packName) user.activeVipPackName = packName;
     } else {
         // Default to retail if type is not specified or retail
-        if ((user.retailReferralFormsLeft || 0) > 0) {
-             return res.status(400).json({ success: false, message: `Cannot recharge: User still has ${(user.retailReferralFormsLeft || 0)} Retail forms.` });
-        }
-        user.retailReferralFormsLeft = parseInt(referralForms); // Set new balance
+        user.retailReferralFormsLeft = (user.retailReferralFormsLeft || 0) + parseInt(referralForms);
         if (packName) user.activeRetailPackName = packName;
     }
     
@@ -874,6 +868,24 @@ export const registerReferredUser = async (req, res) => {
              referrer.vipReferralFormsLeft = (referrer.vipReferralFormsLeft || 0) - 1;
         } else {
              referrer.retailReferralFormsLeft = (referrer.retailReferralFormsLeft || 0) - 1;
+        }
+
+        // Update recharge history usage (FIFO)
+        try {
+            const historyType = formType === 'vip' ? 'vip' : 'retail';
+            const activePack = await RechargeHistory.findOne({
+                user: referrerId,
+                type: historyType,
+                $expr: { $lt: ["$formsUsed", "$referralForms"] }
+            }).sort({ createdAt: 1 });
+
+            if (activePack) {
+                activePack.formsUsed = (activePack.formsUsed || 0) + 1;
+                await activePack.save();
+            }
+        } catch (histError) {
+            console.error('Failed to update recharge history usage:', histError);
+            // Don't block registration if history update fails, aggregate count is primary
         }
         
         // Update aggregated total

@@ -28,6 +28,10 @@ const rechargeHistorySchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  formsUsed: {
+    type: Number,
+    default: 0
+  },
   expiryDate: {
     type: Date,
     required: true,
