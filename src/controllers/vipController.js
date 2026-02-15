@@ -11,7 +11,7 @@ const generateReferralCode = () => {
   return 'VIP' + crypto.randomBytes(4).toString('hex').toUpperCase();
 };
 
-// Check and promote VIP to VVIP if they have 10+ referrals
+// Check and promote VIP to VVIP if they have achieved target referrals
 const checkAndPromoteToVVIP = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return;
@@ -21,8 +21,21 @@ const checkAndPromoteToVVIP = async (userId) => {
   // Update referral count
   user.referralCount = referralCount;
   
-  // Promote to VVIP if 10+ referrals (more than 9)
-  if (referralCount >= 10 && user.vipStatus === 'vip') {
+  // Get package target
+  let target = 10;
+  try {
+      if (user.package) {
+          const pkg = await Package.findOne({ amount: user.package });
+          if (pkg && pkg.referralTarget) {
+              target = pkg.referralTarget;
+          }
+      }
+  } catch (e) {
+      console.error("Error fetching package for target", e);
+  }
+  
+  // Promote to VVIP if target met
+  if (referralCount >= target && user.vipStatus === 'vip') {
     user.vipStatus = 'vvip';
   }
   
@@ -35,7 +48,32 @@ const checkAndPromoteToVVIP = async (userId) => {
 // @access  Private (Admin)
 export const getAllVIPs = async (req, res) => {
   try {
-    const vips = await User.find({ vipStatus: 'vip' })
+    const { package: packageAmount, startDate, endDate, search } = req.query;
+
+    let query = { vipStatus: 'vip' };
+
+    // Filter by package
+    if (packageAmount) {
+      query.package = Number(packageAmount);
+    }
+
+    // Filter by date range
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    }
+
+    // Search by name or phone
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phoneNumber: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const vips = await User.find(query)
       .select('-password')
       .sort({ createdAt: -1 });
     
@@ -63,12 +101,38 @@ export const getAllVIPs = async (req, res) => {
   }
 };
 
+
 // @desc    Get all VVIPs
 // @route   GET /api/vip/vvip
 // @access  Private (Admin)
 export const getAllVVIPs = async (req, res) => {
   try {
-    const vvips = await User.find({ vipStatus: 'vvip' })
+    const { package: packageAmount, startDate, endDate, search } = req.query;
+
+    let query = { vipStatus: 'vvip' };
+
+    // Filter by package
+    if (packageAmount) {
+      query.package = Number(packageAmount);
+    }
+
+    // Filter by date range
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    }
+
+    // Search by name or phone
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phoneNumber: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const vvips = await User.find(query)
       .select('-password')
       .sort({ createdAt: -1 });
     
@@ -215,6 +279,17 @@ export const getVIPProfile = async (req, res) => {
     // Get recharge history
     const rechargeHistory = await RechargeHistory.find({ user: userId }).sort({ createdAt: -1 });
 
+    // Get referral target
+    let referralTarget = 10;
+    try {
+        if (user.package) {
+            const pkg = await Package.findOne({ amount: user.package });
+            if (pkg && pkg.referralTarget) {
+                referralTarget = pkg.referralTarget;
+            }
+        }
+    } catch (e) {}
+
     res.status(200).json({
       success: true,
       data: {
@@ -223,6 +298,7 @@ export const getVIPProfile = async (req, res) => {
           total: referrals.length,
           vipCount,
           vvipCount,
+          target: referralTarget
         },
         referrals,
         rechargeHistory,
@@ -384,12 +460,14 @@ export const registerWithReferral = async (req, res) => {
   }
 };
 
+
 // @desc    Update VIP profile (KYC)
 // @route   PUT /api/vip/profile
 // @access  Private
 export const updateVIPProfile = async (req, res) => {
     try {
         const userId = req.user._id;
+        // If multipart/form-data, req.body has fields and req.file has file
         const { name, phoneNumber, aadhaarNumber, panNumber, bankName, bankAccountNumber, ifscCode } = req.body;
         
         const user = await User.findById(userId);
@@ -399,8 +477,16 @@ export const updateVIPProfile = async (req, res) => {
         if (name) user.name = name;
         if (phoneNumber) user.phoneNumber = phoneNumber;
         
-        // KYC Fields - Allow explict empty string to clear? Or just if provided?
-        // User asked to "add and edit". 
+        // Handle Profile Picture
+        if (req.file) {
+            // Delete old image if exists? (Optional, good practice)
+            // Upload new one
+            const result = await uploadToCloudinary(req.file.buffer, 'retailchampions/users');
+            user.imageUrl = result.secure_url;
+            user.imagePublicId = result.public_id;
+        }
+
+        // KYC Fields
         if (aadhaarNumber !== undefined) user.aadhaarNumber = aadhaarNumber;
         if (panNumber !== undefined) user.panNumber = panNumber;
         if (bankName !== undefined) user.bankName = bankName;
@@ -417,6 +503,87 @@ export const updateVIPProfile = async (req, res) => {
     } catch (error) {
         console.error('Update Profile Error:', error);
         res.status(500).json({ success: false, message: 'Failed to update profile. ' + error.message });
+    }
+};
+
+// @desc    Generate a placeholder VIP account
+// @route   POST /api/vip/generate-placeholder
+// @access  Private (Admin)
+// @desc    Generate a placeholder VIP account
+// @route   POST /api/vip/generate-placeholder
+// @access  Private (Admin)
+export const generatePlaceholderVIP = async (req, res) => {
+    try {
+        const { packageAmount = 1000, count = 1 } = req.body; // Default to 1 basic VIP
+
+        const generatedUsers = [];
+        const quantity = Math.max(1, Math.min(parseInt(count), 50)); // Limit to 50 at a time
+
+        for (let i = 0; i < quantity; i++) {
+            // Generate Random Fake Details
+            const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
+            const placeholderName = `VIP Guest ${randomHex}`;
+            const placeholderPhone = `0000${Math.floor(100000 + Math.random() * 900000)}`; // 0000 + 6 digits
+
+            // Generate Unique Login ID (Coupon Code)
+            const generateCouponCode = () => {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let code = 'RC-';
+                for (let j = 0; j < 6; j++) {
+                    code += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return code;
+            };
+
+            let couponCode = generateCouponCode();
+            let isUnique = false;
+            while (!isUnique) {
+                const existing = await User.findOne({ couponCode });
+                if (!existing) isUnique = true;
+                else couponCode = generateCouponCode();
+            }
+
+            const pkg = await Package.findOne({ amount: packageAmount });
+            if (!pkg || !pkg.isVip) {
+                 // If any fails, we stop? Or just skip? better to fail early if invalid package
+                 return res.status(400).json({ success: false, message: 'Invalid VIP Package Amount' });
+            }
+
+            const user = await User.create({
+                name: placeholderName,
+                phoneNumber: placeholderPhone,
+                password: 'vip@123', // Default Password per user request
+                couponCode,
+                package: packageAmount,
+                vipStatus: 'vip',
+                role: 'user',
+                activeVipPackName: pkg.name
+            });
+            
+            // Also ensure they have a referral code themselves
+            if (!user.referralCode) {
+                 user.referralCode = generateReferralCode();
+                 await user.save();
+            }
+
+            generatedUsers.push({
+                loginId: couponCode,
+                defaultPassword: 'vip@123',
+                name: placeholderName,
+                phoneNumber: placeholderPhone,
+                package: user.package
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            message: `${generatedUsers.length} Placeholder VIP(s) Generated`,
+            data: generatedUsers
+        });
+
+    } catch (error) {
+        console.error('Generate Placeholder Error:', error);
+        res.status(500).json({ success: false, message: 'Failed to generate placeholder' });
     }
 };
 
@@ -879,7 +1046,9 @@ export const registerReferredUser = async (req, res) => {
         let couponCode;
         let isUniqueCoupon = false;
         while (!isUniqueCoupon) {
-            couponCode = 'VIP' + Math.floor(100000 + Math.random() * 900000); // Simple 6 digit
+            // Use RC for Retail users, VIP for VIP users
+            const prefix = formType === 'vip' ? 'VIP' : 'RC';
+            couponCode = prefix + Math.floor(100000 + Math.random() * 900000); // Simple 6 digit
             const existing = await User.findOne({ couponCode });
             if (!existing) isUniqueCoupon = true;
         }
@@ -898,11 +1067,19 @@ export const registerReferredUser = async (req, res) => {
             }
         }
 
+        const finalPackageAmount = parsedPackageAmount || (formType === 'vip' ? 5000 : 100);
+
+        // Check for duplicate registration (same phone + same package)
+        const duplicateUser = await User.findOne({ phoneNumber, package: finalPackageAmount });
+        if (duplicateUser) {
+             return res.status(400).json({ success: false, message: 'User already registered with this phone number and package.' });
+        }
+
         // Create user
         const newUser = new User({
             name,
             phoneNumber,
-            package: parsedPackageAmount || (formType === 'vip' ? 5000 : 100),
+            package: finalPackageAmount,
             vipStatus: formType === 'vip' ? 'vip' : 'none',
             referredBy: referrerId,
             password: 'Retail@123', // Default password

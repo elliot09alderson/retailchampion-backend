@@ -8,9 +8,10 @@ dotenv.config();
 // Admin user details
 const ADMIN_USER = {
   name: 'Admin User',
-  phoneNumber: '9999999999',
-  password: 'admin123',
+  phoneNumber: '1122334455',
+  password: 'onlyadmeeen@1',
   role: 'admin',
+  package: 0, // Admin doesn't have a package, but schema requires it
   documentType: 'pan',
   documentNumber: 'ADMIN12345',
   imageUrl: 'https://via.placeholder.com/150',

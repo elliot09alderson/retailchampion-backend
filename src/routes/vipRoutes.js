@@ -18,6 +18,7 @@ import {
   registerReferredUser,
   updateVIPProfile,
   deactivateRecharge,
+  generatePlaceholderVIP,
 } from '../controllers/vipController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
 import upload from '../middleware/upload.js';
@@ -34,7 +35,7 @@ router.post('/set-password', setVIPPassword);
 router.post('/login', loginVIP);
 
 // Protected routes (VIP/VVIP users)
-router.route('/profile').get(protect, getVIPProfile).put(protect, updateVIPProfile);
+router.route('/profile').get(protect, getVIPProfile).put(protect, upload.single('image'), updateVIPProfile);
 
 // Admin routes
 router.get('/', protect, isAdmin, getAllVIPs);
@@ -48,6 +49,7 @@ router.delete('/delete-all', protect, isAdmin, deleteAllVIPs);
 router.delete('/:id', protect, isAdmin, deleteVIP);
 router.post('/recharge', protect, isAdmin, rechargeVIP);
 router.post('/deactivate-recharge', protect, isAdmin, deactivateRecharge);
+router.post('/generate-placeholder', protect, isAdmin, generatePlaceholderVIP);
 router.post('/register-referral', protect, upload.fields([{ name: 'image', maxCount: 1 }, { name: 'billImage', maxCount: 1 }]), registerReferredUser);
 
 export default router;

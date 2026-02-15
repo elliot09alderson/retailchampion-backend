@@ -29,6 +29,10 @@ const packageSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    referralTarget: {
+      type: Number,
+      default: 10, // Default target for VVIP promotion
+    },
   },
   {
     timestamps: true,
