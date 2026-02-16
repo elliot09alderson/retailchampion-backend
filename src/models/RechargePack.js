@@ -23,6 +23,10 @@ const rechargePackSchema = new mongoose.Schema(
         type: String,
         enum: ['retail', 'vip'],
         default: 'retail' 
+    },
+    referralTarget: {
+        type: Number,
+        default: 10,
     }
   },
   {

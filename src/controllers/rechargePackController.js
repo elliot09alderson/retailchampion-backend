@@ -17,8 +17,8 @@ export const getAllRechargePacks = async (req, res) => {
 // @access  Private (Admin)
 export const createRechargePack = async (req, res) => {
   try {
-    const { name, count, price, type } = req.body;
-    const newPack = new RechargePack({ name, count, price, type });
+    const { name, count, price, type, referralTarget } = req.body;
+    const newPack = new RechargePack({ name, count, price, type, referralTarget });
     await newPack.save();
     res.status(201).json({ success: true, data: newPack });
   } catch (error) {
@@ -41,6 +41,7 @@ export const updateRechargePack = async (req, res) => {
     if (count) pack.count = count;
     if (price) pack.price = price;
     if (type) pack.type = type;
+    if (referralTarget) pack.referralTarget = referralTarget;
     if (isActive !== undefined) pack.isActive = isActive;
 
     await pack.save();
