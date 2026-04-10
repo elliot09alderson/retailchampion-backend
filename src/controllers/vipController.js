@@ -5,6 +5,7 @@ import RechargePack from '../models/RechargePack.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { uploadToCloudinary } from '../config/cloudinary.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // Generate a unique referral code
 const generateReferralCode = () => {
@@ -93,7 +94,7 @@ export const getAllVIPs = async (req, res) => {
   try {
     const { package: packageAmount, startDate, endDate, search } = req.query;
 
-    let query = { vipStatus: 'vip' };
+    let query = { vipStatus: 'vip', ...getTenantFilter(req) };
 
     // Filter by package
     if (packageAmount) {
@@ -152,7 +153,7 @@ export const getAllVVIPs = async (req, res) => {
   try {
     const { package: packageAmount, startDate, endDate, search } = req.query;
 
-    let query = { vipStatus: 'vvip' };
+    let query = { vipStatus: 'vvip', ...getTenantFilter(req) };
 
     // Filter by package
     if (packageAmount) {
@@ -627,7 +628,8 @@ export const generatePlaceholderVIP = async (req, res) => {
                 package: packageAmount,
                 vipStatus: 'vip',
                 role: 'user',
-                activeVipPackName: pkg.name
+                activeVipPackName: pkg.name,
+                createdByAdmin: getAdminId(req),
             });
             
             // Also ensure they have a referral code themselves
@@ -883,7 +885,7 @@ export const loginVIP = async (req, res) => {
 // @access  Private (Admin)
 export const deleteVIP = async (req, res) => {
     try {
-        const vip = await User.findById(req.params.id);
+        const vip = await User.findOne({ _id: req.params.id, ...getTenantFilter(req) });
         if (!vip) {
             return res.status(404).json({ success: false, message: 'VIP not found' });
         }
@@ -905,7 +907,7 @@ export const deleteVIP = async (req, res) => {
 // @access  Private (Admin)
 export const deleteAllVIPs = async (req, res) => {
     try {
-        await User.deleteMany({ vipStatus: { $in: ['vip', 'vvip'] } });
+        await User.deleteMany({ vipStatus: { $in: ['vip', 'vvip'] }, ...getTenantFilter(req) });
         res.status(200).json({ success: true, message: 'All VIPs and VVIPs deleted successfully' });
     } catch (error) {
         console.error(error);
@@ -955,20 +957,21 @@ export const rechargeVIP = async (req, res) => {
         await RechargeHistory.create({
             user: targetUser._id,
             admin: req.user ? req.user._id : undefined,
-            type: type || 'retail', // Ensure type is set
+            type: type || 'retail',
             packName: packName || 'Unknown Pack',
             price: historyPrice,
             referralForms: parseInt(referralForms),
-            formsUsed: 0, // Explicitly init
-            expiryDate: new Date(expiryDate)
+            formsUsed: 0,
+            expiryDate: new Date(expiryDate),
+            createdByAdmin: getAdminId(req),
         });
         
         await targetUser.save();
     };
 
     if (rechargeAll || couponCode === 'ALL') {
-        // Find all VIP users
-        const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] } });
+        // Find all VIP users (tenant-scoped)
+        const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] }, ...getTenantFilter(req) });
         if (users.length === 0) {
             return res.status(404).json({ success: false, message: 'No VIP users found' });
         }
@@ -1031,7 +1034,7 @@ export const deactivateRecharge = async (req, res) => {
         };
 
         if (deactivateAll) {
-             const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] } });
+             const users = await User.find({ vipStatus: { $in: ['vip', 'vvip'] }, ...getTenantFilter(req) });
              await Promise.all(users.map(u => resetUser(u)));
              return res.status(200).json({ success: true, message: `Deactivated recharges for ${users.length} VIP users` });
         } else {
@@ -1146,7 +1149,7 @@ export const registerReferredUser = async (req, res) => {
         //      return res.status(400).json({ success: false, message: 'User already registered with this phone number and package.' });
         // }
 
-        // Create user
+        // Create user (inherit tenant from referrer)
         const newUser = new User({
             name,
             phoneNumber,
@@ -1158,8 +1161,9 @@ export const registerReferredUser = async (req, res) => {
             referralCode: referralCode,
             selfieUrl: selfieUrl,
             role: 'user',
-            idNumber: idNumber, // Save ID Number
-            billImageUrl: billImageUrl // Save Bill Image URL
+            idNumber: idNumber,
+            billImageUrl: billImageUrl,
+            createdByAdmin: referrer.createdByAdmin,
         });
 
         // Generate Registration ID (Retail Champion)

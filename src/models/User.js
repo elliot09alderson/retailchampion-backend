@@ -78,8 +78,54 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'admin', 'superadmin'],
       default: 'user',
+    },
+    // Organization fields (for admin accounts created by superadmin)
+    organizationName: {
+      type: String,
+      trim: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    alternateContactNumber: {
+      type: String,
+      trim: true,
+    },
+    address: {
+      type: String,
+      trim: true,
+    },
+    profilePictureUrl: {
+      type: String,
+    },
+    profilePicturePublicId: {
+      type: String,
+    },
+    status: {
+      type: String,
+      enum: ['active', 'inactive'],
+      default: 'active',
+    },
+    createdBySuperAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    // Admin referral code for QR-based user onboarding
+    adminReferralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    // Tenant isolation: which admin this user belongs to
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
     couponCode: {
       type: String,

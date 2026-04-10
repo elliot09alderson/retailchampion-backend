@@ -21,6 +21,11 @@ const galleryItemSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,

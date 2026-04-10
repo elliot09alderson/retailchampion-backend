@@ -11,6 +11,8 @@ import vipRoutes from './routes/vipRoutes.js';
 import galleryRoutes from './routes/galleryRoutes.js';
 import logRoutes from './routes/logRoutes.js';
 import rechargePackRoutes from './routes/rechargePackRoutes.js';
+import superAdminRoutes from './routes/superAdminRoutes.js';
+import { resolveAdminReferral } from './controllers/superAdminController.js';
 import { startScheduler } from './services/autoSpinScheduler.js';
 
 // Load environment variables
@@ -71,6 +73,10 @@ app.use('/api/vip', vipRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/recharge-packs', rechargePackRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+
+// Public route: resolve admin referral code (no auth needed)
+app.get('/api/admin-referral/:code', resolveAdminReferral);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

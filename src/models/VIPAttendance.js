@@ -33,6 +33,11 @@ const vipAttendanceSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,

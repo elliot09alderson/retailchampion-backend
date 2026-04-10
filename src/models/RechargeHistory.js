@@ -36,6 +36,11 @@ const rechargeHistorySchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  createdByAdmin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

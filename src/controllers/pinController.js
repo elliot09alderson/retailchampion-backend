@@ -1,5 +1,6 @@
 import Pin from '../models/Pin.js';
 import User from '../models/User.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // @desc    Generate new pins
 // @route   POST /api/pins/generate
@@ -17,19 +18,18 @@ export const generatePins = async (req, res) => {
     }
 
     const pins = [];
-    const generatedBy = req.user ? req.user._id : null; // Assuming auth middleware adds user to req
+    const generatedBy = req.user ? req.user._id : null;
+    const adminId = getAdminId(req);
 
     for (let i = 0; i < count; i++) {
-      // Generate a random 6-digit alphanumeric code
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      
-      // Ensure specific format if needed, but 6-chars is usually good for PINs
-      
+
       pins.push({
         code,
         package: packageAmount,
         expiryDate: new Date(expiryDate),
         generatedBy,
+        createdByAdmin: adminId,
         status: 'active'
       });
     }
@@ -75,7 +75,7 @@ export const getPins = async (req, res) => {
   try {
     const { status, package: packageAmount, page = 1, limit = 50 } = req.query;
 
-    const filter = {};
+    const filter = { ...getTenantFilter(req) };
     if (status) filter.status = status;
     if (packageAmount) filter.package = packageAmount;
 
@@ -163,7 +163,9 @@ export const validatePin = async (req, res) => {
 // @access  Admin
 export const getPinStats = async (req, res) => {
   try {
+    const tenantFilter = getTenantFilter(req);
     const stats = await Pin.aggregate([
+      ...(Object.keys(tenantFilter).length > 0 ? [{ $match: tenantFilter }] : []),
       {
         $project: {
           package: 1,

@@ -5,6 +5,13 @@ import LotteryRound from '../models/LotteryRound.js';
 import User from '../models/User.js';
 import { performSpinLogic } from '../services/lotteryEngine.js';
 import { logger } from '../utils/logger.js';
+import { getTenantFilter } from '../middleware/auth.js';
+
+// Lottery uses 'createdBy' instead of 'createdByAdmin' for tenant isolation
+const getLotteryTenantFilter = (req) => {
+  if (req.user.role === 'superadmin') return {};
+  return { createdBy: req.user._id };
+};
 
 // Secure random selection using crypto
 const selectRandomUsers = (users, count) => {
@@ -80,7 +87,7 @@ export const createLottery = async (req, res) => {
 
         if (finalPackage !== 0) {
             const Package = (await import('../models/Package.js')).default;
-            const packageExists = await Package.findOne({ amount: finalPackage });
+            const packageExists = await Package.findOne({ amount: finalPackage, ...getTenantFilter(req) });
             
             if (!packageExists) {
                 return res.status(400).json({
@@ -129,13 +136,14 @@ export const createLottery = async (req, res) => {
       prizes: req.body.prizes || []
     });
 
-    // Auto-seed eligible participants
+    // Auto-seed eligible participants (tenant-scoped)
     let eligibleUsers = [];
-    
+    const tenantFilter = getTenantFilter(req);
+
     if (isSuperWinner) {
-        eligibleUsers = await User.find({ _id: { $in: participantIds } }).select('_id');
+        eligibleUsers = await User.find({ _id: { $in: participantIds }, ...tenantFilter }).select('_id');
     } else {
-        const userQuery = { role: 'user' };
+        const userQuery = { role: 'user', ...tenantFilter };
         if (finalPackage !== 0) {
             userQuery.package = finalPackage;
         }
@@ -497,10 +505,12 @@ export const getLotteryHistory = async (req, res) => {
     const now = new Date();
     logger.info(`[HISTORY_CHECK] Server Time: ${now.toISOString()}`);
 
+    const lotteryTenantFilter = getLotteryTenantFilter(req);
     const expiredLotteries = await Lottery.find({
       status: { $in: ['pending', 'active'] },
       endDate: { $lt: now },
-      isAutoSpin: true
+      isAutoSpin: true,
+      ...lotteryTenantFilter,
     });
 
     if (expiredLotteries.length > 0) {
@@ -541,8 +551,9 @@ export const getLotteryHistory = async (req, res) => {
 
 
 
-    // Fetch all lotteries (completed and pending) so admin can see everything
-    const lotteries = await Lottery.find({})
+    // Fetch lotteries scoped to this admin's tenant
+    const lotteryFilter = getLotteryTenantFilter(req);
+    const lotteries = await Lottery.find(lotteryFilter)
       .populate('winnerId', 'name phoneNumber selfieUrl')
       .populate('winners', 'name phoneNumber selfieUrl')
       .sort({ createdAt: -1 });
@@ -588,7 +599,7 @@ export const deleteLottery = async (req, res) => {
   try {
     const { lotteryId } = req.params;
 
-    const lottery = await Lottery.findById(lotteryId);
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...getLotteryTenantFilter(req) });
     if (!lottery) {
       return res.status(404).json({
         success: false,
@@ -620,8 +631,8 @@ export const deleteLottery = async (req, res) => {
 // Delete all completed lottery records (Admin only)
 export const deleteAllLotteries = async (req, res) => {
   try {
-    // Get all completed lotteries
-    const completedLotteries = await Lottery.find({ status: 'completed' });
+    // Get all completed lotteries (tenant-scoped)
+    const completedLotteries = await Lottery.find({ status: 'completed', ...getLotteryTenantFilter(req) });
     
     if (completedLotteries.length === 0) {
       return res.status(404).json({
@@ -636,7 +647,7 @@ export const deleteAllLotteries = async (req, res) => {
     await Promise.all([
       LotteryRound.deleteMany({ lotteryId: { $in: lotteryIds } }),
       LotteryParticipant.deleteMany({ lotteryId: { $in: lotteryIds } }),
-      Lottery.deleteMany({ status: 'completed' })
+      Lottery.deleteMany({ status: 'completed', ...getLotteryTenantFilter(req) })
     ]);
 
     res.status(200).json({
@@ -658,7 +669,8 @@ export const deleteAllLotteries = async (req, res) => {
 export const getSelectableLotteries = async (req, res) => {
   try {
     const lotteries = await Lottery.find({
-      status: { $in: ['pending', 'active'] }
+      status: { $in: ['pending', 'active'] },
+      ...getLotteryTenantFilter(req),
     })
     .select('eventName type status startDate endDate package')
     .sort({ createdAt: -1 });

@@ -1,5 +1,6 @@
 import VIPAttendance from '../models/VIPAttendance.js';
 import { uploadToCloudinary } from '../config/cloudinary.js';
+import { getTenantFilter } from '../middleware/auth.js';
 
 // @desc    Submit VIP Attendance
 // @route   POST /api/vip/attendance
@@ -35,7 +36,8 @@ export const submitAttendance = async (req, res) => {
 // @access  Private (Admin)
 export const getAttendance = async (req, res) => {
   try {
-    const records = await VIPAttendance.find().sort({ attendedAt: -1 });
+    const tenantFilter = getTenantFilter(req);
+    const records = await VIPAttendance.find(tenantFilter).sort({ attendedAt: -1 });
     res.status(200).json({ success: true, count: records.length, data: records });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch attendance records' });

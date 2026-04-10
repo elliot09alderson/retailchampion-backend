@@ -1,17 +1,25 @@
 import Package from '../models/Package.js';
 import User from '../models/User.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // @desc    Get all active packages
 // @route   GET /api/packages
 // @access  Public
 export const getPackages = async (req, res) => {
   try {
-    const packages = await Package.find({ isActive: true }).sort({ amount: 1 });
-    
-    // Enrich with user counts
+    // If authenticated admin/superadmin, apply tenant filter; otherwise show all active
+    let filter = { isActive: true };
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+      filter = { isActive: true, ...getTenantFilter(req) };
+    }
+
+    const packages = await Package.find(filter).sort({ amount: 1 });
+
+    // Enrich with user counts (tenant-scoped)
+    const userTenantFilter = req.user ? getTenantFilter(req) : {};
     const enrichedPackages = await Promise.all(
       packages.map(async (pkg) => {
-        const userCount = await User.countDocuments({ role: 'user', package: pkg.amount });
+        const userCount = await User.countDocuments({ role: 'user', package: pkg.amount, ...userTenantFilter });
         return {
           ...pkg.toObject(),
           userCount,
@@ -46,7 +54,9 @@ export const createPackage = async (req, res) => {
       });
     }
 
-    const existingPackage = await Package.findOne({ amount });
+    const adminId = getAdminId(req);
+    // Check uniqueness within this admin's packages
+    const existingPackage = await Package.findOne({ amount, createdByAdmin: adminId });
     if (existingPackage) {
       return res.status(400).json({
         success: false,
@@ -61,6 +71,7 @@ export const createPackage = async (req, res) => {
       isVip: isVip || false,
       whatsappGroupLink: whatsappGroupLink || '',
       referralTarget: referralTarget || 10,
+      createdByAdmin: adminId,
     });
 
     res.status(201).json({
@@ -85,8 +96,9 @@ export const updatePackage = async (req, res) => {
     const { id } = req.params;
     const { name, amount, description, isActive, isVip, whatsappGroupLink, referralTarget } = req.body;
 
-    const updatedPackage = await Package.findByIdAndUpdate(
-      id,
+    const tenantFilter = getTenantFilter(req);
+    const updatedPackage = await Package.findOneAndUpdate(
+      { _id: id, ...tenantFilter },
       { name, amount, description, isActive, isVip, whatsappGroupLink, referralTarget },
       { new: true, runValidators: true }
     );
@@ -118,7 +130,8 @@ export const updatePackage = async (req, res) => {
 export const deletePackage = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedPackage = await Package.findByIdAndDelete(id);
+    const tenantFilter = getTenantFilter(req);
+    const deletedPackage = await Package.findOneAndDelete({ _id: id, ...tenantFilter });
 
     if (!deletedPackage) {
       return res.status(404).json({

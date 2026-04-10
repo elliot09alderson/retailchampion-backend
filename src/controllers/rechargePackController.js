@@ -1,11 +1,16 @@
 import RechargePack from '../models/RechargePack.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // @desc    Get all active recharge packs
 // @route   GET /api/recharge-packs
 // @access  Private (Admin/VIP)
 export const getAllRechargePacks = async (req, res) => {
   try {
-    const packs = await RechargePack.find({ isActive: true });
+    let filter = { isActive: true };
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+      filter = { isActive: true, ...getTenantFilter(req) };
+    }
+    const packs = await RechargePack.find(filter);
     res.json({ success: true, data: packs });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
@@ -18,7 +23,10 @@ export const getAllRechargePacks = async (req, res) => {
 export const createRechargePack = async (req, res) => {
   try {
     const { name, count, price, type, referralTarget } = req.body;
-    const newPack = new RechargePack({ name, count, price, type, referralTarget });
+    const newPack = new RechargePack({
+      name, count, price, type, referralTarget,
+      createdByAdmin: getAdminId(req),
+    });
     await newPack.save();
     res.status(201).json({ success: true, data: newPack });
   } catch (error) {
@@ -31,8 +39,9 @@ export const createRechargePack = async (req, res) => {
 // @access  Private (Admin)
 export const updateRechargePack = async (req, res) => {
   try {
-    const { name, count, price, type, isActive } = req.body;
-    const pack = await RechargePack.findById(req.params.id);
+    const { name, count, price, type, isActive, referralTarget } = req.body;
+    const tenantFilter = getTenantFilter(req);
+    const pack = await RechargePack.findOne({ _id: req.params.id, ...tenantFilter });
     if (!pack) {
       return res.status(404).json({ success: false, message: 'Pack not found' });
     }
@@ -56,7 +65,8 @@ export const updateRechargePack = async (req, res) => {
 // @access  Private (Admin)
 export const deleteRechargePack = async (req, res) => {
   try {
-    const pack = await RechargePack.findById(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+    const pack = await RechargePack.findOne({ _id: req.params.id, ...tenantFilter });
     if (!pack) {
       return res.status(404).json({ success: false, message: 'Pack not found' });
     }

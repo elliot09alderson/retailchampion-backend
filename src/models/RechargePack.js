@@ -27,7 +27,12 @@ const rechargePackSchema = new mongoose.Schema(
     referralTarget: {
         type: Number,
         default: 10,
-    }
+    },
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,

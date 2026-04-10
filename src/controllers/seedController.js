@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import Lottery from '../models/Lottery.js';
 import LotteryParticipant from '../models/LotteryParticipant.js';
 import User from '../models/User.js';
+import { getTenantFilter } from '../middleware/auth.js';
 
 // Secure random selection using crypto
 const selectRandomUsers = (users, count) => {
@@ -25,7 +26,8 @@ export const seedParticipantsFromUsers = async (req, res) => {
     }
     
     if (!lottery) {
-      lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
+      const lotteryTenantFilter = req.user.role === 'superadmin' ? {} : { createdBy: req.user._id };
+      lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] }, ...lotteryTenantFilter });
     }
     
     if (!lottery) {
@@ -37,10 +39,12 @@ export const seedParticipantsFromUsers = async (req, res) => {
 
     console.log('📋 Using contest:', lottery.eventName, 'Package:', lottery.package);
 
-    // Get all users (excluding admins) matching the lottery's package
-    let users = await User.find({ 
+    // Get all users (excluding admins) matching the lottery's package (tenant-scoped)
+    const tenantFilter = getTenantFilter(req);
+    let users = await User.find({
       role: 'user',
-      package: lottery.package 
+      package: lottery.package,
+      ...tenantFilter,
     }).select('_id name');
     
     if (users.length === 0) {
@@ -129,7 +133,8 @@ export const seedParticipantsFromUsers = async (req, res) => {
 // Get seeding status
 export const getSeedStatus = async (req, res) => {
   try {
-    const lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] } });
+    const lotteryTenantFilter = req.user.role === 'superadmin' ? {} : { createdBy: req.user._id };
+    const lottery = await Lottery.findOne({ status: { $in: ['pending', 'active'] }, ...lotteryTenantFilter });
     
     if (!lottery) {
       return res.status(200).json({
@@ -141,7 +146,8 @@ export const getSeedStatus = async (req, res) => {
       });
     }
 
-    const totalUsers = await User.countDocuments({ role: 'user' });
+    const tenantFilter = getTenantFilter(req);
+    const totalUsers = await User.countDocuments({ role: 'user', ...tenantFilter });
     const totalParticipants = await LotteryParticipant.countDocuments({ 
       lotteryId: lottery._id 
     });

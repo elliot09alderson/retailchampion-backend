@@ -23,8 +23,32 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    // Find user by phone number
-    const user = await User.findOne({ phoneNumber });
+    // Try admin/superadmin accounts first (faster, fewer records)
+    const adminUsers = await User.find({ phoneNumber, role: { $in: ['superadmin', 'admin'] } });
+
+    let user = null;
+    for (const candidate of adminUsers) {
+      const isMatch = await candidate.comparePassword(password);
+      if (isMatch) {
+        user = candidate;
+        break;
+      }
+    }
+
+    // If no admin match, try regular user (limit to 5 most recent to avoid timeout)
+    if (!user) {
+      const regularUsers = await User.find({ phoneNumber, role: 'user' })
+        .sort({ createdAt: -1 })
+        .limit(5);
+
+      for (const candidate of regularUsers) {
+        const isMatch = await candidate.comparePassword(password);
+        if (isMatch) {
+          user = candidate;
+          break;
+        }
+      }
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -33,13 +57,11 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    // Check password
-    const isMatch = await user.comparePassword(password);
-
-    if (!isMatch) {
-      return res.status(401).json({
+    // Check if admin account is active
+    if (user.role === 'admin' && user.status === 'inactive') {
+      return res.status(403).json({
         success: false,
-        message: 'Invalid credentials',
+        message: 'Your account has been deactivated. Please contact the Super Admin.',
       });
     }
 
@@ -56,6 +78,9 @@ export const loginUser = async (req, res) => {
         documentType: user.documentType,
         imageUrl: user.imageUrl,
         role: user.role,
+        organizationName: user.organizationName,
+        profilePictureUrl: user.profilePictureUrl,
+        adminReferralCode: user.adminReferralCode,
       },
       token,
     });

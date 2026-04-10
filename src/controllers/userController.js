@@ -8,6 +8,7 @@ import {
   validateGetUsersQuery,
 } from '../validators/userValidator.js';
 import { processVIPRegistration } from './vipController.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // @desc    Register a new user
 // @route   POST /api/users/register
@@ -29,35 +30,55 @@ export const registerUser = async (req, res) => {
     }
 
     const { name, phoneNumber, password, aadhaarNumber, panNumber, registrationId, package: userPackage, pin, referralCode, isVipRegistration } = validation.data;
+    const adminRef = req.body.adminRef; // Admin referral code from QR scan
+
+    // Resolve admin tenant from QR scan first — this allows bypassing PIN requirement
+    let resolvedAdminUser = null;
+    if (adminRef) {
+      resolvedAdminUser = await User.findOne({
+        adminReferralCode: adminRef.toUpperCase(),
+        role: 'admin',
+        status: 'active',
+      });
+      if (!resolvedAdminUser) {
+        return res.status(400).json({ success: false, message: 'Invalid admin referral code' });
+      }
+    }
 
     // Check if this is a VIP package
     const pkg = await Package.findOne({ amount: userPackage });
+    if (!pkg) {
+      return res.status(400).json({ success: false, message: 'Invalid package selected' });
+    }
     const isVipPackage = pkg && pkg.isVip;
-    
+
     let pinRecord = null;
-    
-    // Validate PIN
-    if (!pin) {
-      return res.status(400).json({ success: false, message: 'PIN is required' });
-    }
-    
-    pinRecord = await Pin.findOne({ code: pin });
-    if (!pinRecord) {
-      return res.status(400).json({ success: false, message: 'Invalid PIN' });
-    }
 
-    if (pinRecord.package !== userPackage) {
-      return res.status(400).json({ success: false, message: 'PIN is not valid for the selected package' });
-    }
+    // PIN is only required when there's no admin QR ref. With a valid QR scan,
+    // the admin's referral code authorizes the registration so PIN is skipped.
+    if (!resolvedAdminUser) {
+      if (!pin) {
+        return res.status(400).json({ success: false, message: 'PIN is required' });
+      }
 
-    if (pinRecord.status !== 'active') {
+      pinRecord = await Pin.findOne({ code: pin });
+      if (!pinRecord) {
+        return res.status(400).json({ success: false, message: 'Invalid PIN' });
+      }
+
+      if (pinRecord.package !== userPackage) {
+        return res.status(400).json({ success: false, message: 'PIN is not valid for the selected package' });
+      }
+
+      if (pinRecord.status !== 'active') {
         return res.status(400).json({ success: false, message: `PIN is ${pinRecord.status}` });
-    }
+      }
 
-    if (new Date() > pinRecord.expiryDate) {
+      if (new Date() > pinRecord.expiryDate) {
         pinRecord.status = 'expired';
         await pinRecord.save();
         return res.status(400).json({ success: false, message: 'PIN has expired' });
+      }
     }
 
     // Check if at least one file was uploaded (either image or selfie)
@@ -117,6 +138,8 @@ export const registerUser = async (req, res) => {
       password: password || 'Retail@123',
       couponCode,
       package: userPackage,
+      // Tenant isolation: QR-based admin ref takes priority, then PIN's admin
+      createdByAdmin: null, // will be set below
     };
 
     if (uploadResult) {
@@ -137,6 +160,13 @@ export const registerUser = async (req, res) => {
     }
     if (registrationId) {
       userData.registrationId = registrationId;
+    }
+
+    // Resolve admin tenant: QR-based admin referral code takes priority
+    if (resolvedAdminUser) {
+      userData.createdByAdmin = resolvedAdminUser._id;
+    } else if (pinRecord) {
+      userData.createdByAdmin = pinRecord.createdByAdmin || pinRecord.generatedBy || null;
     }
 
     // Create user
@@ -221,8 +251,8 @@ export const getUsers = async (req, res) => {
 
     const { page, limit, search, sortBy, sortOrder, package: pkg, contest } = validation.data;
 
-    // Build query filter
-    const filter = {};
+    // Build query filter with tenant isolation
+    const filter = { role: 'user', ...getTenantFilter(req) };
 
     if (pkg) {
       filter.package = pkg;
@@ -295,7 +325,8 @@ export const getUsers = async (req, res) => {
 // @access  Public
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password -imagePublicId -__v').lean();
+    const tenantFilter = getTenantFilter(req);
+    const user = await User.findOne({ _id: req.params.id, ...tenantFilter }).select('-password -imagePublicId -__v').lean();
 
     if (!user) {
       return res.status(404).json({
@@ -332,7 +363,8 @@ export const getUserById = async (req, res) => {
 // @access  Public
 export const deleteUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+    const user = await User.findOne({ _id: req.params.id, ...tenantFilter });
 
     if (!user) {
       return res.status(404).json({
@@ -378,8 +410,9 @@ export const deleteUser = async (req, res) => {
 // @access  Private (requires auth header)
 export const deleteAllUsers = async (req, res) => {
   try {
-    // Get all public IDs for Cloudinary deletion
-    const users = await User.find({ role: 'user' }).select('imagePublicId selfiePublicId').lean();
+    const tenantFilter = getTenantFilter(req);
+    // Get all public IDs for Cloudinary deletion (only for this admin's users)
+    const users = await User.find({ role: 'user', ...tenantFilter }).select('imagePublicId selfiePublicId').lean();
     const publicIds = users.reduce((acc, u) => {
       if (u.imagePublicId) acc.push(u.imagePublicId);
       if (u.selfiePublicId) acc.push(u.selfiePublicId);
@@ -394,8 +427,8 @@ export const deleteAllUsers = async (req, res) => {
       }
     }
 
-    // Delete all users from database
-    await User.deleteMany({ role: 'user' });
+    // Delete all users from database (only this admin's users)
+    await User.deleteMany({ role: 'user', ...tenantFilter });
 
     res.status(200).json({
       success: true,
@@ -416,8 +449,8 @@ export const deleteAllUsers = async (req, res) => {
 export const getUserCount = async (req, res) => {
   try {
     const { package: pkg, startDate, endDate } = req.query;
-    
-    const query = { role: 'user' };
+
+    const query = { role: 'user', ...getTenantFilter(req) };
 
     if (pkg) {
       query.package = Number(pkg);

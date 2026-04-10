@@ -1,12 +1,18 @@
 import GalleryItem from '../models/GalleryItem.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
+import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 
 // @desc    Get all gallery items
 // @route   GET /api/gallery
 // @access  Public
 export const getGalleryItems = async (req, res) => {
   try {
-    const items = await GalleryItem.find().sort({ createdAt: -1 });
+    // If authenticated admin, scope to tenant; otherwise show all
+    let filter = {};
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+      filter = getTenantFilter(req);
+    }
+    const items = await GalleryItem.find(filter).sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: items });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch gallery' });
@@ -19,7 +25,7 @@ export const getGalleryItems = async (req, res) => {
 export const uploadGalleryItem = async (req, res) => {
   try {
     const { description, heading, subheading } = req.body;
-    
+
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image uploaded' });
     }
@@ -31,7 +37,8 @@ export const uploadGalleryItem = async (req, res) => {
       publicId: result.public_id,
       heading,
       subheading,
-      description
+      description,
+      createdByAdmin: getAdminId(req),
     });
 
     res.status(201).json({ success: true, data: item });
@@ -46,7 +53,8 @@ export const uploadGalleryItem = async (req, res) => {
 // @access  Private (Admin)
 export const deleteGalleryItem = async (req, res) => {
   try {
-    const item = await GalleryItem.findById(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+    const item = await GalleryItem.findOne({ _id: req.params.id, ...tenantFilter });
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
@@ -54,7 +62,7 @@ export const deleteGalleryItem = async (req, res) => {
     if (item.publicId) {
       await deleteFromCloudinary(item.publicId);
     }
-    
+
     await item.deleteOne();
     res.status(200).json({ success: true, message: 'Deleted' });
   } catch (error) {
@@ -68,7 +76,8 @@ export const deleteGalleryItem = async (req, res) => {
 export const updateGalleryItem = async (req, res) => {
   try {
     const { description, heading, subheading } = req.body;
-    const item = await GalleryItem.findById(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+    const item = await GalleryItem.findOne({ _id: req.params.id, ...tenantFilter });
 
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });

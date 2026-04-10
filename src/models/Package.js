@@ -10,7 +10,6 @@ const packageSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
-      unique: true,
     },
     description: {
       type: String,
@@ -33,11 +32,19 @@ const packageSchema = new mongoose.Schema(
       type: Number,
       default: 10, // Default target for VVIP promotion
     },
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+// Unique amount per admin (tenant isolation)
+packageSchema.index({ amount: 1, createdByAdmin: 1 }, { unique: true });
 
 const Package = mongoose.model('Package', packageSchema);
 

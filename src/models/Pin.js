@@ -34,7 +34,12 @@ const pinSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User', // Admin who generated it
       default: null, // Optional if we don't track who generated it
-    }
+    },
+    createdByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,
