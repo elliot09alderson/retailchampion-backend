@@ -20,14 +20,22 @@ import {
 } from '../controllers/seedController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
 
+// Optional auth: attaches req.user if token present, but doesn't block if not
+const optionalAuth = async (req, res, next) => {
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try { await protect(req, res, () => {}); } catch { /* ignore */ }
+  }
+  next();
+};
+
 const router = express.Router();
 
-// Public routes
-router.get('/public/winners', protect, getPublicWinners);
-router.get('/active', getActiveLottery);
-router.get('/:lotteryId/status', getLotteryStatus);
-router.get('/:lotteryId/winner', getWinner);
-router.get('/:lotteryId/round/:roundNumber', getRoundDetails);
+// Public routes (with optional auth for tenant scoping)
+router.get('/public/winners', optionalAuth, getPublicWinners);
+router.get('/active', optionalAuth, getActiveLottery);
+router.get('/:lotteryId/status', optionalAuth, getLotteryStatus);
+router.get('/:lotteryId/winner', optionalAuth, getWinner);
+router.get('/:lotteryId/round/:roundNumber', optionalAuth, getRoundDetails);
 
 // Protected routes (authenticated users)
 router.post('/:lotteryId/register', protect, registerParticipant);

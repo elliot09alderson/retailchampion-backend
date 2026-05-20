@@ -7,16 +7,37 @@ import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 // @access  Public
 export const getPackages = async (req, res) => {
   try {
-    // If authenticated admin/superadmin, apply tenant filter; otherwise show all active
     let filter = { isActive: true };
-    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
-      filter = { isActive: true, ...getTenantFilter(req) };
+
+    if (req.user) {
+      if (req.user.role === 'superadmin') {
+        // Superadmin sees all
+      } else if (req.user.role === 'admin') {
+        filter.createdByAdmin = req.user._id;
+      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+        // VIP/regular user: scope to their admin's packages
+        filter.createdByAdmin = req.user.createdByAdmin;
+      }
+    } else if (req.query.adminId) {
+      // Public request with adminId (e.g. registration via QR code)
+      filter.createdByAdmin = req.query.adminId;
     }
 
     const packages = await Package.find(filter).sort({ amount: 1 });
 
     // Enrich with user counts (tenant-scoped)
-    const userTenantFilter = req.user ? getTenantFilter(req) : {};
+    let userTenantFilter = {};
+    if (req.user) {
+      if (req.user.role === 'superadmin') {
+        userTenantFilter = {};
+      } else if (req.user.role === 'admin') {
+        userTenantFilter = { createdByAdmin: req.user._id };
+      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+        userTenantFilter = { createdByAdmin: req.user.createdByAdmin };
+      }
+    } else if (req.query.adminId) {
+      userTenantFilter = { createdByAdmin: req.query.adminId };
+    }
     const enrichedPackages = await Promise.all(
       packages.map(async (pkg) => {
         const userCount = await User.countDocuments({ role: 'user', package: pkg.amount, ...userTenantFilter });

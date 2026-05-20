@@ -277,6 +277,45 @@ export const deleteAdmin = async (req, res) => {
   }
 };
 
+// @desc    Reset admin password
+// @route   PATCH /api/superadmin/admins/:id/password
+// @access  Super Admin only
+export const resetAdminPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters',
+      });
+    }
+
+    const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin not found',
+      });
+    }
+
+    admin.password = newPassword;
+    await admin.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successfully',
+    });
+  } catch (error) {
+    console.error('Reset Admin Password Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+    });
+  }
+};
+
 // @desc    Get super admin dashboard stats
 // @route   GET /api/superadmin/stats
 // @access  Super Admin only

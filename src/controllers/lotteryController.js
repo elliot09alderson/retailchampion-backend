@@ -10,7 +10,10 @@ import { getTenantFilter } from '../middleware/auth.js';
 // Lottery uses 'createdBy' instead of 'createdByAdmin' for tenant isolation
 const getLotteryTenantFilter = (req) => {
   if (req.user.role === 'superadmin') return {};
-  return { createdBy: req.user._id };
+  if (req.user.role === 'admin') return { createdBy: req.user._id };
+  // Regular user (VIP): scope to their admin
+  if (req.user.createdByAdmin) return { createdBy: req.user.createdByAdmin };
+  return {};
 };
 
 // Secure random selection using crypto
@@ -191,8 +194,9 @@ export const registerParticipant = async (req, res) => {
   try {
     const { lotteryId } = req.params;
 
-    // Find lottery
-    const lottery = await Lottery.findById(lotteryId);
+    // Find lottery (tenant-scoped)
+    const tenantFilter = req.user ? getLotteryTenantFilter(req) : {};
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...tenantFilter });
     if (!lottery) {
       return res.status(404).json({
         success: false,
@@ -275,6 +279,13 @@ export const getParticipants = async (req, res) => {
   try {
     const { lotteryId } = req.params;
 
+    // Verify lottery belongs to this tenant
+    const tenantFilter = getLotteryTenantFilter(req);
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...tenantFilter });
+    if (!lottery) {
+      return res.status(404).json({ success: false, message: 'Lottery not found' });
+    }
+
     const participants = await LotteryParticipant.find({ lotteryId })
       .populate('userId', 'name phoneNumber selfieUrl imageUrl')
       .sort({ createdAt: -1 });
@@ -324,8 +335,8 @@ export const executeSpin = async (req, res) => {
 export const getLotteryStatus = async (req, res) => {
   try {
     const { lotteryId } = req.params;
-
-    const lottery = await Lottery.findById(lotteryId);
+    const tenantFilter = req.user ? getLotteryTenantFilter(req) : {};
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...tenantFilter });
     if (!lottery) {
       return res.status(404).json({
         success: false,
@@ -411,8 +422,10 @@ export const getLotteryStatus = async (req, res) => {
 // Get active lottery
 export const getActiveLottery = async (req, res) => {
   try {
+    const tenantFilter = req.user ? getLotteryTenantFilter(req) : {};
     const lottery = await Lottery.findOne({
       status: { $in: ['pending', 'active'] },
+      ...tenantFilter,
     }).sort({ createdAt: -1 });
 
     if (!lottery) {
@@ -440,6 +453,13 @@ export const getActiveLottery = async (req, res) => {
 export const getWinner = async (req, res) => {
   try {
     const { lotteryId } = req.params;
+
+    // Verify lottery belongs to this tenant
+    const tenantFilter = req.user ? getLotteryTenantFilter(req) : {};
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...tenantFilter });
+    if (!lottery) {
+      return res.status(404).json({ success: false, message: 'Lottery not found' });
+    }
 
     const winner = await LotteryParticipant.findOne({
       lotteryId,
@@ -471,6 +491,13 @@ export const getWinner = async (req, res) => {
 export const getRoundDetails = async (req, res) => {
   try {
     const { lotteryId, roundNumber } = req.params;
+
+    // Verify lottery belongs to this tenant
+    const tenantFilter = req.user ? getLotteryTenantFilter(req) : {};
+    const lottery = await Lottery.findOne({ _id: lotteryId, ...tenantFilter });
+    if (!lottery) {
+      return res.status(404).json({ success: false, message: 'Lottery not found' });
+    }
 
     const round = await LotteryRound.findOne({
       lotteryId,
@@ -573,10 +600,22 @@ export const getLotteryHistory = async (req, res) => {
   }
 };
 
-// Get public winner history
+// Get public winner history (tenant-scoped)
 export const getPublicWinners = async (req, res) => {
   try {
-    const lotteries = await Lottery.find({ status: 'completed' })
+    let filter = { status: 'completed' };
+
+    // Tenant isolation: scope winners to the admin this user belongs to
+    if (req.user) {
+      if (req.user.role === 'admin') {
+        filter.createdBy = req.user._id;
+      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+        filter.createdBy = req.user.createdByAdmin;
+      }
+      // superadmin sees all
+    }
+
+    const lotteries = await Lottery.find(filter)
       .select('eventName winners prizes completedAt')
       .populate('winners', 'name selfieUrl phoneNumber')
       .sort({ completedAt: -1 });

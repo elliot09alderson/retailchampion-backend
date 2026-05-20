@@ -7,10 +7,16 @@ import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 // @access  Public
 export const getGalleryItems = async (req, res) => {
   try {
-    // If authenticated admin, scope to tenant; otherwise show all
     let filter = {};
-    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
-      filter = getTenantFilter(req);
+    if (req.user) {
+      if (req.user.role === 'admin') {
+        filter = { createdByAdmin: req.user._id };
+      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+        filter = { createdByAdmin: req.user.createdByAdmin };
+      }
+      // superadmin sees all
+    } else if (req.query.adminId) {
+      filter = { createdByAdmin: req.query.adminId };
     }
     const items = await GalleryItem.find(filter).sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: items });

@@ -8,6 +8,7 @@ import {
   updateAdminStatus,
   deleteAdmin,
   getDashboardStats,
+  resetAdminPassword,
 } from '../controllers/superAdminController.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.post('/admins', upload.single('profilePicture'), registerAdmin);
 router.get('/admins', getAllAdmins);
 router.get('/admins/:id', getAdminById);
 router.patch('/admins/:id/status', updateAdminStatus);
+router.patch('/admins/:id/password', resetAdminPassword);
 router.delete('/admins/:id', deleteAdmin);
 
 export default router;

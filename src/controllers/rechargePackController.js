@@ -7,8 +7,14 @@ import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 export const getAllRechargePacks = async (req, res) => {
   try {
     let filter = { isActive: true };
-    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
-      filter = { isActive: true, ...getTenantFilter(req) };
+    if (req.user) {
+      if (req.user.role === 'superadmin') {
+        // superadmin sees all
+      } else if (req.user.role === 'admin') {
+        filter.createdByAdmin = req.user._id;
+      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+        filter.createdByAdmin = req.user.createdByAdmin;
+      }
     }
     const packs = await RechargePack.find(filter);
     res.json({ success: true, data: packs });

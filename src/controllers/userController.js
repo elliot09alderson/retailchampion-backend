@@ -45,8 +45,12 @@ export const registerUser = async (req, res) => {
       }
     }
 
-    // Check if this is a VIP package
-    const pkg = await Package.findOne({ amount: userPackage });
+    // Check if this is a VIP package — scope to admin if registering via QR code
+    const pkgFilter = { amount: userPackage };
+    if (resolvedAdminUser) {
+      pkgFilter.createdByAdmin = resolvedAdminUser._id;
+    }
+    const pkg = await Package.findOne(pkgFilter);
     if (!pkg) {
       return res.status(400).json({ success: false, message: 'Invalid package selected' });
     }

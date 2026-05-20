@@ -12,6 +12,8 @@ import galleryRoutes from './routes/galleryRoutes.js';
 import logRoutes from './routes/logRoutes.js';
 import rechargePackRoutes from './routes/rechargePackRoutes.js';
 import superAdminRoutes from './routes/superAdminRoutes.js';
+import productRoutes from './routes/productRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
 import { resolveAdminReferral } from './controllers/superAdminController.js';
 import { startScheduler } from './services/autoSpinScheduler.js';
 
@@ -74,6 +76,8 @@ app.use('/api/gallery', galleryRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/recharge-packs', rechargePackRoutes);
 app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
 
 // Public route: resolve admin referral code (no auth needed)
 app.get('/api/admin-referral/:code', resolveAdminReferral);

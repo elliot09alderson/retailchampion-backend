@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -110,6 +111,56 @@ export const getMe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Update admin profile (organization name, profile picture)
+// @route   PUT /api/auth/profile
+// @access  Private (Admin)
+export const updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { organizationName } = req.body;
+
+    if (organizationName) {
+      user.organizationName = organizationName;
+      user.name = organizationName;
+    }
+
+    // Handle profile picture upload
+    if (req.file) {
+      // Delete old picture from Cloudinary if it exists
+      if (user.profilePicturePublicId) {
+        await deleteFromCloudinary(user.profilePicturePublicId);
+      }
+      const uploadResult = await uploadToCloudinary(req.file.buffer, 'admins');
+      user.profilePictureUrl = uploadResult.secure_url;
+      user.profilePicturePublicId = uploadResult.public_id;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        id: user._id,
+        organizationName: user.organizationName,
+        profilePictureUrl: user.profilePictureUrl,
+        name: user.name,
+      },
+    });
+  } catch (error) {
+    console.error('Update Profile Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }

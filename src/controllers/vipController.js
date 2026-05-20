@@ -221,8 +221,9 @@ export const getAllVVIPs = async (req, res) => {
 export const generateVIPReferralCode = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const user = await User.findById(id);
+
+    const tenantFilter = getTenantFilter(req);
+    const user = await User.findOne({ _id: id, ...tenantFilter });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -270,7 +271,8 @@ export const getVIPReferrals = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const referrals = await User.find({ referredBy: id })
+    const tenantFilter = getTenantFilter(req);
+    const referrals = await User.find({ referredBy: id, ...tenantFilter })
       .select('-password')
       .sort({ createdAt: -1 });
 
@@ -391,8 +393,9 @@ export const deleteGalleryItem = async (req, res) => {
     try {
         const { userId } = req.params;
         const { imageUrl } = req.body;
-        
-        const user = await User.findById(userId);
+
+        const tenantFilter = getTenantFilter(req);
+        const user = await User.findOne({ _id: userId, ...tenantFilter });
         if (!user) {
              return res.status(404).json({ success: false, message: 'User not found' });
         }
@@ -419,9 +422,10 @@ export const uploadGalleryItem = async (req, res) => {
              return res.status(400).json({ success: false, message: 'No image uploaded' });
         }
         
-        const user = await User.findById(userId);
+        const tenantFilter = getTenantFilter(req);
+        const user = await User.findOne({ _id: userId, ...tenantFilter });
         if(!user) return res.status(404).json({ success: false, message: 'User not found' });
-        
+
         // Upload to Cloudinary
         const result = await uploadToCloudinary(req.file.buffer, 'retailchampions/gallery');
         
@@ -590,6 +594,15 @@ export const generatePlaceholderVIP = async (req, res) => {
         const generatedUsers = [];
         const quantity = Math.max(1, Math.min(parseInt(count), 50)); // Limit to 50 at a time
 
+        // Validate VIP package before the loop (scoped to admin)
+        const adminId = getAdminId(req);
+        const pkgFilter = { amount: packageAmount };
+        if (adminId) pkgFilter.createdByAdmin = adminId;
+        const pkg = await Package.findOne(pkgFilter);
+        if (!pkg || !pkg.isVip) {
+            return res.status(400).json({ success: false, message: 'Invalid VIP Package Amount' });
+        }
+
         for (let i = 0; i < quantity; i++) {
             // Generate Random Fake Details
             const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -614,12 +627,6 @@ export const generatePlaceholderVIP = async (req, res) => {
                 else couponCode = generateCouponCode();
             }
 
-            const pkg = await Package.findOne({ amount: packageAmount });
-            if (!pkg || !pkg.isVip) {
-                 // If any fails, we stop? Or just skip? better to fail early if invalid package
-                 return res.status(400).json({ success: false, message: 'Invalid VIP Package Amount' });
-            }
-
             const user = await User.create({
                 name: placeholderName,
                 phoneNumber: placeholderPhone,
@@ -629,7 +636,7 @@ export const generatePlaceholderVIP = async (req, res) => {
                 vipStatus: 'vip',
                 role: 'user',
                 activeVipPackName: pkg.name,
-                createdByAdmin: getAdminId(req),
+                createdByAdmin: adminId,
             });
             
             // Also ensure they have a referral code themselves
@@ -983,13 +990,13 @@ export const rechargeVIP = async (req, res) => {
             message: `Successfully recharged ${users.length} VIP users`
         });
     } else {
-        const user = await User.findOne({ couponCode });
+        const user = await User.findOne({ couponCode, ...getTenantFilter(req) });
         if (!user) {
           return res.status(404).json({ success: false, message: 'User not found' });
         }
-        
+
         await performRecharge(user);
-    
+
         return res.status(200).json({
           success: true,
           message: `${type === 'vip' ? 'VIP' : 'Retail'} referral forms recharged successfully`,
@@ -1038,7 +1045,7 @@ export const deactivateRecharge = async (req, res) => {
              await Promise.all(users.map(u => resetUser(u)));
              return res.status(200).json({ success: true, message: `Deactivated recharges for ${users.length} VIP users` });
         } else {
-             const user = await User.findOne({ couponCode });
+             const user = await User.findOne({ couponCode, ...getTenantFilter(req) });
              if (!user) return res.status(404).json({ success: false, message: 'User not found' });
              
              await resetUser(user);
