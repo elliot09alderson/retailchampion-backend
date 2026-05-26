@@ -929,14 +929,18 @@ export const rechargeVIP = async (req, res) => {
   try {
     const { couponCode, referralForms, expiryDate, type, packName, rechargeAll } = req.body; // type: 'vip' or 'retail'
 
-    // Price lookup (once)
-    let historyPrice = 0;
-    if (packName) {
-        try {
-             const rPack = await RechargePack.findOne({ name: packName });
-             if (rPack) historyPrice = rPack.price;
-        } catch (e) { console.error('Pack lookup failed', e); }
+    // Validate pack is provided and exists (scoped to this admin)
+    if (!packName) {
+      return res.status(400).json({ success: false, message: 'A referral pack must be selected to recharge.' });
     }
+    const adminId = getAdminId(req);
+    const rPackCheck = await RechargePack.findOne({ name: packName, createdByAdmin: adminId, isActive: true });
+    if (!rPackCheck) {
+      return res.status(400).json({ success: false, message: 'Selected pack not found or does not belong to your account.' });
+    }
+
+    // Price lookup (once)
+    const historyPrice = rPackCheck.price;
 
     const performRecharge = async (targetUser) => {
         if (type === 'vip') {
@@ -965,7 +969,7 @@ export const rechargeVIP = async (req, res) => {
             user: targetUser._id,
             admin: req.user ? req.user._id : undefined,
             type: type || 'retail',
-            packName: packName || 'Unknown Pack',
+            packName: packName,
             price: historyPrice,
             referralForms: parseInt(referralForms),
             formsUsed: 0,
