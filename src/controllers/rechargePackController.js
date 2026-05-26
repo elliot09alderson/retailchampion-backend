@@ -6,15 +6,19 @@ import { getTenantFilter, getAdminId } from '../middleware/auth.js';
 // @access  Private (Admin/VIP)
 export const getAllRechargePacks = async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
     let filter = { isActive: true };
-    if (req.user) {
-      if (req.user.role === 'superadmin') {
-        // superadmin sees all
-      } else if (req.user.role === 'admin') {
-        filter.createdByAdmin = req.user._id;
-      } else if (req.user.role === 'user' && req.user.createdByAdmin) {
-        filter.createdByAdmin = req.user.createdByAdmin;
-      }
+    if (req.user.role === 'superadmin') {
+      // superadmin sees all
+    } else if (req.user.role === 'admin') {
+      filter.createdByAdmin = req.user._id;
+    } else if (req.user.role === 'user' && req.user.createdByAdmin) {
+      filter.createdByAdmin = req.user.createdByAdmin;
+    } else {
+      // unknown role or user without admin — return empty
+      return res.json({ success: true, data: [] });
     }
     const packs = await RechargePack.find(filter);
     res.json({ success: true, data: packs });

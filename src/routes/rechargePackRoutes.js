@@ -10,7 +10,7 @@ import { protect, isAdmin } from '../middleware/auth.js';
 const router = express.Router();
 
 router.route('/')
-    .get(getAllRechargePacks)
+    .get(protect, getAllRechargePacks)
     .post(protect, isAdmin, createRechargePack);
 
 router.route('/:id')
