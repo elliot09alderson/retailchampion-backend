@@ -64,6 +64,24 @@ export const getOrders = async (req, res) => {
   }
 };
 
+// Admin/SuperAdmin: delete an order
+export const deleteOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    // Admin can only delete orders for their own products
+    if (req.user.role === 'admin' && String(order.productAdminId) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    await order.deleteOne();
+    res.json({ success: true, message: 'Order deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Admin/SuperAdmin: toggle order status (pending <-> delivered)
 export const updateOrderStatus = async (req, res) => {
   try {
