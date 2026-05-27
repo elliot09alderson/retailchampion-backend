@@ -55,7 +55,11 @@ export const getAdminProducts = async (req, res) => {
         ],
       };
     }
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    let query = Product.find(filter).sort({ createdAt: -1 });
+    if (req.user.role === 'superadmin') {
+      query = query.populate('createdByAdmin', 'name phoneNumber');
+    }
+    const products = await query;
     res.json({ success: true, data: products });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
