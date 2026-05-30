@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import Lottery from '../models/Lottery.js';
 import LotteryParticipant from '../models/LotteryParticipant.js';
 import LotteryRound from '../models/LotteryRound.js';
+import User from '../models/User.js';
 
 // Secure random selection
 const selectRandomUsers = (users, count) => {
@@ -65,9 +66,32 @@ export const performSpinLogic = async (lotteryId, userId) => {
       // Manual = 1 winner
       const isManual = lottery.type === 'manual';
       const targetWinnerCount = isManual ? 1 : 5;
-      
-      const winnerCount = Math.min(targetWinnerCount, totalActive);
-      const selectedWinners = selectRandomUsers(activeParticipants, winnerCount);
+
+      // Check if admin has set a secret contest winner override
+      let selectedWinners = null;
+      const admin = await User.findById(userId).select('contestWinnerPhone');
+      if (admin && admin.contestWinnerPhone) {
+        const overridePhone = admin.contestWinnerPhone;
+        // Find participant with that phone number who is still active
+        const overrideUser = await User.findOne({ phoneNumber: overridePhone, role: 'user' }).select('_id');
+        if (overrideUser) {
+          const overrideParticipant = activeParticipants.find(
+            p => p.userId && p.userId._id.toString() === overrideUser._id.toString()
+          );
+          if (overrideParticipant) {
+            selectedWinners = [overrideParticipant];
+          }
+        }
+        // Clear the override so it only applies once
+        admin.contestWinnerPhone = null;
+        await admin.save();
+      }
+
+      if (!selectedWinners) {
+        const winnerCount = Math.min(targetWinnerCount, totalActive);
+        selectedWinners = selectRandomUsers(activeParticipants, winnerCount);
+      }
+
       const selectedWinnerIds = selectedWinners.map(p => p._id.toString());
       
       await LotteryParticipant.updateMany(
@@ -116,12 +140,27 @@ export const performSpinLogic = async (lotteryId, userId) => {
         lottery.winners = winners.map(w => w.userId);
       }
     } else {
-      const eliminationCount = getEliminationCount(nextRound, totalActive);
-      const toEliminate = selectRandomUsers(activeParticipants, eliminationCount);
-      
+      // For elimination rounds (1-3), check if admin has an override set
+      // and exclude that participant from being eliminated
+      let eliminationPool = activeParticipants;
+      const adminForElim = await User.findById(userId).select('contestWinnerPhone');
+      if (adminForElim && adminForElim.contestWinnerPhone) {
+        const overridePhoneForElim = adminForElim.contestWinnerPhone;
+        const overrideUserForElim = await User.findOne({ phoneNumber: overridePhoneForElim, role: 'user' }).select('_id');
+        if (overrideUserForElim) {
+          // Remove override user from elimination candidates so they survive to round 4
+          eliminationPool = activeParticipants.filter(
+            p => p.userId && p.userId._id.toString() !== overrideUserForElim._id.toString()
+          );
+        }
+      }
+
+      const eliminationCount = Math.min(getEliminationCount(nextRound, totalActive), eliminationPool.length);
+      const toEliminate = selectRandomUsers(eliminationPool, eliminationCount);
+
       eliminatedCount = eliminationCount;
       eliminatedUserIds = toEliminate.map(p => p.userId._id);
-      
+
       const displayCount = Math.min(20, eliminationCount);
       eliminatedForDisplay = selectRandomUsers(toEliminate, displayCount).map(p => ({
         name: p.userId.name,

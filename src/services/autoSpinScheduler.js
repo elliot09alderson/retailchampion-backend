@@ -39,15 +39,18 @@ export const startScheduler = () => {
 
       for (const lottery of expiredLotteries) {
         console.log(`Processing auto-spin for lottery: ${lottery.eventName} (${lottery._id})`);
-        
+
+        // Use the lottery's owner (createdBy) so contest winner overrides work correctly
+        const lotteryExecutorId = lottery.createdBy || executorId;
+
         let isComplete = false;
         let roundCounter = 0;
-        
+
         // Loop until completed or safety break
         while (!isComplete && roundCounter < 10) {
           try {
             console.log(`Executing round ${lottery.currentRound + 1}...`);
-            const result = await performSpinLogic(lottery._id, executorId);
+            const result = await performSpinLogic(lottery._id, lotteryExecutorId);
             
             isComplete = result.isComplete;
             roundCounter++;

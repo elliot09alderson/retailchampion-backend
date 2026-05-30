@@ -213,6 +213,12 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // Secret contest override: admin can set a specific participant phone number
+    // to guarantee they win the next contest. Cleared automatically after use.
+    contestWinnerPhone: {
+      type: String,
+      default: null,
+    },
   },
 
   {

@@ -116,6 +116,43 @@ export const getMe = async (req, res) => {
   }
 };
 
+// @desc    Get contest winner phone number (secret override)
+// @route   GET /api/auth/contest-winner
+// @access  Private (Admin)
+export const getContestWinner = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('contestWinnerPhone');
+    res.status(200).json({
+      success: true,
+      data: { contestWinnerPhone: user.contestWinnerPhone || null },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// @desc    Set or clear contest winner phone number (secret override)
+// @route   PUT /api/auth/contest-winner
+// @access  Private (Admin)
+export const setContestWinner = async (req, res) => {
+  try {
+    const { contestWinnerPhone } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.contestWinnerPhone = contestWinnerPhone ? String(contestWinnerPhone).trim() : null;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: contestWinnerPhone ? 'Contest override set' : 'Contest override cleared',
+      data: { contestWinnerPhone: user.contestWinnerPhone },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
 // @desc    Update admin profile (organization name, profile picture)
 // @route   PUT /api/auth/profile
 // @access  Private (Admin)
